@@ -8,6 +8,7 @@ export default function ClientCreate() {
   async function handleSubmit(payload) {
     const created = await api.createClient(payload);
     navigate(`/clients/${created.id}`);
+    return true; // navigated away
   }
 
   return (

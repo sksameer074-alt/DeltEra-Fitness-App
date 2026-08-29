@@ -28,7 +28,7 @@ export default function SessionCalendar({ sessions }) {
             {byDay.map((items, i) => (
               <td key={i}>
                 {items.length === 0 ? (
-                  <span style={{ color: "#bbb" }}>—</span>
+                  <span style={{ color: "var(--text-2)" }}>—</span>
                 ) : (
                   items.map((s) => (
                     <div key={s.id} className={STATUS_CLASS[s.status] || "slot"}>
@@ -44,7 +44,7 @@ export default function SessionCalendar({ sessions }) {
           </tr>
         </tbody>
       </table>
-      <p style={{ fontSize: "0.8rem", color: "#888" }}>
+      <p style={{ fontSize: "0.8rem", color: "var(--text-2)" }}>
         <span className="swatch done" /> done&nbsp;&nbsp;
         <span className="swatch missed" /> missed&nbsp;&nbsp;
         <span className="swatch upcoming" /> upcoming

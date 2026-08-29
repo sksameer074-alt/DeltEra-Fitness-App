@@ -15,7 +15,7 @@ export default function ClientReports() {
     <div className="card">
       <p><Link to={`/clients/${id}`}>← Back to client</Link></p>
       <h1>Reports</h1>
-      <p style={{ color: "#888", fontSize: "0.85rem" }}>Read-only — uploaded by the client.</p>
+      <p style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>Read-only — uploaded by the client.</p>
       {error && <div className="error">{error}</div>}
       {reports === null ? (
         <p>Loading…</p>
@@ -26,7 +26,7 @@ export default function ClientReports() {
           {reports.map((r) => (
             <li key={r.id} style={{ marginBottom: 8 }}>
               <a href={r.file_url} target="_blank" rel="noreferrer">{r.note || "report"}</a>
-              <span style={{ color: "#888", fontSize: "0.75rem", marginLeft: 8 }}>
+              <span style={{ color: "var(--text-2)", fontSize: "0.75rem", marginLeft: 8 }}>
                 {new Date(r.uploaded_at).toLocaleString()}
               </span>
             </li>

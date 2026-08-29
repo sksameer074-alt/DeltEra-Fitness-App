@@ -27,7 +27,7 @@ export default function WeeklyCalendar({ entries }) {
             {byDay.map((times, i) => (
               <td key={i}>
                 {times.length === 0 ? (
-                  <span style={{ color: "#bbb" }}>—</span>
+                  <span style={{ color: "var(--text-2)" }}>—</span>
                 ) : (
                   times.map((t) => (
                     <div key={t} className="slot">
@@ -40,7 +40,7 @@ export default function WeeklyCalendar({ entries }) {
           </tr>
         </tbody>
       </table>
-      <p style={{ color: "#888", fontSize: "0.8rem" }}>Times shown in IST.</p>
+      <p style={{ color: "var(--text-2)", fontSize: "0.8rem" }}>Times shown in IST.</p>
     </div>
   );
 }

@@ -40,11 +40,13 @@ def upsert_diet_photos(
         )
     )
     photos = [p.model_dump() for p in payload.photos]
+    now = datetime.now(timezone.utc)
     if row is None:
-        row = DietPhoto(client_id=client.id, date=on, photos=photos)
+        row = DietPhoto(client_id=client.id, date=on, photos=photos, photos_updated_at=now)
         db.add(row)
     else:
         row.photos = photos
+        row.photos_updated_at = now
     db.commit()
     db.refresh(row)
     return row

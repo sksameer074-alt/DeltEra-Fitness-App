@@ -1,5 +1,5 @@
 export function WeightTable({ logs }) {
-  if (!logs.length) return <p style={{ color: "#888" }}>No entries yet.</p>;
+  if (!logs.length) return <p style={{ color: "var(--text-2)" }}>No entries yet.</p>;
   return (
     <table>
       <thead>
@@ -21,7 +21,7 @@ export function WeightTable({ logs }) {
 }
 
 export function MeasurementsTable({ rows }) {
-  if (!rows.length) return <p style={{ color: "#888" }}>No entries yet.</p>;
+  if (!rows.length) return <p style={{ color: "var(--text-2)" }}>No entries yet.</p>;
   return (
     <div style={{ overflowX: "auto" }}>
       <table>

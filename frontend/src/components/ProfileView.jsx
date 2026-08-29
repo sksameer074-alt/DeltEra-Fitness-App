@@ -3,7 +3,7 @@ function Field({ label, value }) {
     value === null || value === "" || value === undefined ? "—" : String(value);
   return (
     <div className="row" style={{ padding: "4px 0" }}>
-      <span style={{ color: "#666" }}>{label}</span>
+      <span style={{ color: "var(--text-2)" }}>{label}</span>
       <span>{shown}</span>
     </div>
   );
@@ -29,7 +29,7 @@ export default function ProfileView({ user }) {
       <Field label="BMI" value={user.bmi} />
       <Field label="BMR (kcal/day)" value={user.bmr} />
       <Field label="TDEE (kcal/day)" value={user.tdee} />
-      <p style={{ color: "#888", fontSize: "0.8rem" }}>
+      <p style={{ color: "var(--text-2)", fontSize: "0.8rem" }}>
         Entered by your trainer. Not auto-calculated.
       </p>
     </>

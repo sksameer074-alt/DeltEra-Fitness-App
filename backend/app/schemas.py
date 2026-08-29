@@ -60,14 +60,26 @@ class MetricFields(BaseModel):
     tdee: Optional[float] = None
 
 
+class LandingStatsFields(BaseModel):
+    """The landing page's headline numbers. Typed in by the trainer; never
+    computed from the transformations / users / sessions tables."""
+
+    total_clients_stat: Optional[int] = Field(default=None, ge=0)
+    total_transformations_stat: Optional[int] = Field(default=None, ge=0)
+    total_sessions_stat: Optional[int] = Field(default=None, ge=0)
+
+
 class UserBase(ProfileFields):
     name: str
 
 
 class SignupRequest(UserBase):
+    # Public signup ALWAYS creates a client. There is deliberately no `role`
+    # field here, and the endpoint hardcodes role="client" regardless of the
+    # request body. The single trainer account is created out of band
+    # (backend/create_trainer.py).
     phone_number: str
     password: str = Field(min_length=PASSWORD_MIN_LEN)
-    role: Role = "client"
 
     _v_phone = field_validator("phone_number")(_check_phone)
 
@@ -118,7 +130,7 @@ class PackageBrief(BaseModel):
     trainer_name: Optional[str] = None
 
 
-class UserOut(UserBase, MetricFields):
+class UserOut(UserBase, MetricFields, LandingStatsFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -359,9 +371,11 @@ class ReportOut(BaseModel):
 # ---- Self-service profile edits (client or trainer, on their own record) ----
 
 
-class MeUpdate(BaseModel):
+class MeUpdate(LandingStatsFields):
     profile_photo_url: Optional[str] = Field(default=None, max_length=8_000_000)
     feeling_note: Optional[str] = None
+    bio: Optional[str] = None
+    credentials: Optional[str] = None
 
 
 # ---- Announcements ----
@@ -377,6 +391,52 @@ class AnnouncementOut(BaseModel):
     id: uuid.UUID
     message: str
     created_at: datetime
+
+
+# ---- Transformations + public landing ----
+
+
+class TransformationIn(BaseModel):
+    client_name: str = Field(min_length=1)
+    before_photo_url: Optional[str] = Field(default=None, max_length=8_000_000)
+    after_photo_url: Optional[str] = Field(default=None, max_length=8_000_000)
+    caption: Optional[str] = None
+
+
+class TransformationUpdate(BaseModel):
+    client_name: Optional[str] = None
+    before_photo_url: Optional[str] = Field(default=None, max_length=8_000_000)
+    after_photo_url: Optional[str] = Field(default=None, max_length=8_000_000)
+    caption: Optional[str] = None
+
+
+class TransformationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    client_name: str
+    before_photo_url: Optional[str] = None
+    after_photo_url: Optional[str] = None
+    caption: Optional[str] = None
+    created_at: datetime
+
+
+class PublicTrainer(BaseModel):
+    name: str
+    profile_photo_url: Optional[str] = None
+    bio: Optional[str] = None
+    credentials: Optional[str] = None
+
+
+class LandingOut(BaseModel):
+    trainer: Optional[PublicTrainer] = None
+    transformations: List[TransformationOut]
+    stats: dict  # {clients, transformations, sessions} — the trainer's manual numbers
+
+
+class PurgeResult(BaseModel):
+    cleared: int
+    older_than_hours: float
 
 
 # ---- Analytics (trainer dashboard) ----

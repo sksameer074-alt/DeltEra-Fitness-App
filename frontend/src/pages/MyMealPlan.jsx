@@ -15,29 +15,16 @@ export default function MyMealPlan() {
 
   return (
     <div className="card">
-      <h1>My Meal Plan</h1>
+      <h1>My meal plan</h1>
       {plan.updated_at ? (
-        <p style={{ color: "#888", fontSize: "0.85rem" }}>
+        <p style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>
           Last updated {new Date(plan.updated_at).toLocaleString()}
         </p>
       ) : (
-        <p style={{ color: "#888" }}>Your trainer hasn't written a meal plan yet.</p>
+        <p style={{ color: "var(--text-2)" }}>Your trainer hasn't written a meal plan yet.</p>
       )}
-      {plan.plan_text && (
-        <pre
-          style={{
-            whiteSpace: "pre-wrap",
-            fontFamily: "inherit",
-            background: "#fafafa",
-            border: "1px solid #eee",
-            borderRadius: 6,
-            padding: 12,
-          }}
-        >
-          {plan.plan_text}
-        </pre>
-      )}
-      <p style={{ color: "#888", fontSize: "0.8rem" }}>Read-only. Managed by your trainer.</p>
+      {plan.plan_text && <pre className="plan">{plan.plan_text}</pre>}
+      <p style={{ color: "var(--text-2)", fontSize: "0.8rem" }}>Read-only. Managed by your trainer.</p>
     </div>
   );
 }

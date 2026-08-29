@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,10 +18,12 @@ from .models import (  # noqa: F401  (register models before create_all)
     Schedule,
     Supplement,
     TrainingSession,
+    Transformation,
     User,
     WeeklyMeasurement,
 )
 from .routers import (
+    admin,
     analytics,
     announcements,
     auth,
@@ -31,18 +34,27 @@ from .routers import (
     packages,
     payments,
     progress,
+    public,
     reports,
     schedules,
     sessions,
     supplements,
+    transformations,
     users,
 )
+from .scheduler import start_scheduler, stop_scheduler
+
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    yield
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
 
 
 app = FastAPI(title="Delt_era Fitness API", lifespan=lifespan)
@@ -77,5 +89,8 @@ for r in (
     payments.router,
     analytics.router,
     announcements.router,
+    transformations.router,
+    public.router,
+    admin.router,
 ):
     app.include_router(r)

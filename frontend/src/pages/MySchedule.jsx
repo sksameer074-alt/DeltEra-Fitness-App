@@ -23,8 +23,8 @@ export default function MySchedule() {
 
   return (
     <div className="card">
-      <h1>My Workouts</h1>
-      <p style={{ color: "#888", fontSize: "0.85rem" }}>
+      <h1>My workouts</h1>
+      <p style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>
         {summary.week_start} → {summary.week_end}
       </p>
 
@@ -42,10 +42,10 @@ export default function MySchedule() {
       {!summary.next_session ? (
         <p>No upcoming session.</p>
       ) : (
-        <div className="card" style={{ background: "#fafafa" }}>
-          <div className="row"><span style={{ color: "#666" }}>Date</span><span>{summary.next_session.date}</span></div>
+        <div className="card subcard">
+          <div className="row"><span style={{ color: "var(--text-2)" }}>Date</span><span>{summary.next_session.date}</span></div>
           <div className="row">
-            <span style={{ color: "#666" }}>Workout details</span>
+            <span style={{ color: "var(--text-2)" }}>Workout details</span>
             <span>{summary.next_session.workout_details || "Not posted yet"}</span>
           </div>
         </div>
@@ -53,7 +53,7 @@ export default function MySchedule() {
 
       <h2 style={{ marginTop: 20 }}>Workout history</h2>
       {history.length === 0 ? (
-        <p style={{ color: "#888" }}>No sessions yet.</p>
+        <p style={{ color: "var(--text-2)" }}>No sessions yet.</p>
       ) : (
         <div className="scroll-list">
           {history.map((s) => (
@@ -62,8 +62,8 @@ export default function MySchedule() {
                 <strong>{s.date}</strong>
                 <span className={"pill " + s.status}>{s.status}</span>
               </div>
-              <div style={{ fontSize: "0.88rem", color: "#444", whiteSpace: "pre-wrap" }}>
-                {s.workout_details || <span style={{ color: "#aaa" }}>No details</span>}
+              <div style={{ fontSize: "0.88rem", color: "var(--text-2)", whiteSpace: "pre-wrap" }}>
+                {s.workout_details || <span style={{ color: "var(--text-2)" }}>No details</span>}
               </div>
             </div>
           ))}

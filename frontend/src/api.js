@@ -116,6 +116,15 @@ export const api = {
   latestAnnouncement: () => request("/announcements/latest"),
   listAnnouncements: () => request("/announcements"),
   postAnnouncement: (message) => post("/announcements", { message }),
+
+  landing: () => request("/public/landing", { auth: false }),
+  listTransformations: () => request("/transformations"),
+  addTransformation: (b) => post("/transformations", b),
+  updateTransformation: (tid, b) => patch(`/transformations/${tid}`, b),
+  deleteTransformation: (tid) => del(`/transformations/${tid}`),
+
+  purgeDietPhotos: (hours = 24) =>
+    post(`/admin/purge-diet-photos?older_than_hours=${hours}`),
 };
 
 // Consecutive "done" sessions ending at the most recent decided session.

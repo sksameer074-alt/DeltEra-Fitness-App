@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { passwordError, phoneError } from "../api";
+import { useUnsavedGuard } from "../hooks.js";
 
 const SEX_OPTIONS = ["male", "female", "other"];
 const ACTIVITY_OPTIONS = ["lightly active", "moderately active", "very active"];
@@ -27,12 +28,19 @@ const EMPTY = {
  * onSubmit receives a cleaned payload object.
  */
 export default function ClientForm({ mode, initial, onSubmit, submitLabel }) {
-  const [form, setForm] = useState({ ...EMPTY, ...toStrings(initial) });
+  const start = useMemo(() => ({ ...EMPTY, ...toStrings(initial) }), [initial]);
+  const [form, setForm] = useState(start);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(start));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const dirty = JSON.stringify(form) !== savedSnapshot;
+  useUnsavedGuard(dirty && !saving);
 
   function update(e) {
     const { name, value, type, checked } = e.target;
+    setSaved(false);
     setForm({ ...form, [name]: type === "checkbox" ? checked : value });
   }
 
@@ -71,7 +79,13 @@ export default function ClientForm({ mode, initial, onSubmit, submitLabel }) {
     }
 
     try {
-      await onSubmit(payload);
+      const navigated = await onSubmit(payload);
+      if (!navigated) {
+        // parent stayed on the page (edit) — reflect the save here
+        setSavedSnapshot(JSON.stringify(form));
+        setSaved(true);
+        setSaving(false);
+      }
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -197,9 +211,18 @@ export default function ClientForm({ mode, initial, onSubmit, submitLabel }) {
         />
       )}
 
-      <button type="submit" disabled={saving || !!phoneErr || !!pwErr}>
-        {saving ? "Saving…" : submitLabel}
-      </button>
+      <div className="savebar">
+        <button
+          type="submit"
+          className="btn btn-primary"
+          style={{ marginTop: 0 }}
+          disabled={saving || !!phoneErr || !!pwErr || (mode === "edit" && !dirty)}
+        >
+          {saving ? "Saving…" : submitLabel}
+        </button>
+        {saved && !dirty && <span className="toast">Saved</span>}
+        {dirty && !saving && mode === "edit" && <span className="unsaved-note">Unsaved changes</span>}
+      </div>
       {error && <div className="error">{error}</div>}
     </form>
   );

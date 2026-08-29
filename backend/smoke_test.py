@@ -31,7 +31,8 @@ def check(label, cond):
     _passed += 1
 
 
-def signup(name, phone, pw, role):
+def signup(name, phone, pw, role="client"):
+    # `role` is intentionally still sent to prove the endpoint ignores it.
     r = client.post(
         "/auth/signup",
         json={"name": name, "phone_number": phone, "password": pw, "role": role},
@@ -40,9 +41,25 @@ def signup(name, phone, pw, role):
     return r.json()
 
 
+def make_trainer(name, phone, pw):
+    """Trainers are created out of band (see backend/create_trainer.py), never
+    through public signup. Mirror that here with a direct insert + login."""
+    from app.database import SessionLocal
+    from app.models import User as _User
+    from app.security import hash_password as _hash
+
+    db = SessionLocal()
+    db.add(_User(name=name, phone_number=phone, password=_hash(pw), role="trainer"))
+    db.commit()
+    db.close()
+    r = client.post("/auth/login", json={"phone_number": phone, "password": pw})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 alice = signup("Alice", "1000000001", "secret1", "client")
 bob = signup("Bob", "1000000002", "secret2", "client")
-tina = signup("Tina", "9000000001", "trainer1", "trainer")
+tina = make_trainer("Tina", "9000000001", "trainer1")
 A_ID, B_ID = alice["user"]["id"], bob["user"]["id"]
 ah = {"Authorization": f"Bearer {alice['access_token']}"}
 bh = {"Authorization": f"Bearer {bob['access_token']}"}
@@ -60,6 +77,21 @@ check("signup rejects a password under 6 chars (422)",
       client.post("/auth/signup", json={"name": "X", "phone_number": "1000000009", "password": "abc"}).status_code == 422)
 check("trainer create-client rejects a bad phone (422)",
       client.post("/clients", headers=th, json={"name": "X", "phone_number": "99", "password": "secret1"}).status_code == 422)
+
+# ---- public signup can NEVER create a trainer ----
+check("public signup ignores role=client and creates a client", alice["user"]["role"] == "client")
+_locked = signup("Mallory", "1000000050", "secret50", "trainer")
+check("public signup ignores role=trainer and still creates a client",
+      _locked["user"]["role"] == "client")
+_raw = client.post(
+    "/auth/signup",
+    json={"name": "Eve", "phone_number": "1000000051", "password": "secret51", "role": "trainer"},
+)
+check("a hand-crafted signup body with role=trainer still yields a client",
+      _raw.status_code == 201 and _raw.json()["user"]["role"] == "client")
+check("the out-of-band trainer account logs in and is a trainer",
+      client.post("/auth/login",
+                  json={"phone_number": "9000000001", "password": "trainer1"}).json()["user"]["role"] == "trainer")
 
 # ---- auth / access matrix (unchanged rules) ----
 check("signup never returns the password", "password" not in alice["user"])
@@ -237,6 +269,23 @@ check("client CANNOT set a diet review (403)",
 check("client CANNOT read ANOTHER client's diet photos (403)",
       client.get(f"/clients/{B_ID}/diet-photos", headers=ah).status_code == 403)
 
+# ---- 8b. 24h diet-photo auto-purge ----
+check("client CANNOT trigger the purge (403)",
+      client.post("/admin/purge-diet-photos?older_than_hours=0", headers=ah).status_code == 403)
+r = client.post("/admin/purge-diet-photos?older_than_hours=0", headers=th)
+check("manual purge (older_than_hours=0) clears 1 record", r.status_code == 200 and r.json()["cleared"] == 1)
+after = client.get(f"/clients/{A_ID}/diet-photos", headers=ah).json()[0]
+check("purge cleared the photos array", after["photos"] == [])
+check("purge KEPT trainer_comment / _at / diet_rating",
+      after["trainer_comment"] == "Great choices today"
+      and after["trainer_comment_at"] is not None
+      and after["trainer_diet_rating"] == 4)
+check("purge is idempotent (nothing left to clear)",
+      client.post("/admin/purge-diet-photos?older_than_hours=0", headers=th).json()["cleared"] == 0)
+check("default purge (24h) leaves a just-uploaded photo alone",
+      client.put(f"/clients/{B_ID}/diet-photos", headers=bh, json={"photos": [{"photo_url": "x"}]}).status_code == 200
+      and client.post("/admin/purge-diet-photos", headers=th).json()["cleared"] == 0)
+
 # ---- 9. password reset / change ----
 check("trainer resets a client's password (204)",
       client.post(f"/clients/{A_ID}/reset-password", headers=th, json={"new_password": "temp123"}).status_code == 204)
@@ -331,7 +380,7 @@ check("no token -> payments 401/403", client.get(f"/clients/{A_ID}/payments").st
 # ---- 14. analytics dashboard (trainer only) ----
 check("client CANNOT open analytics (403)", client.get("/analytics", headers=ah).status_code == 403)
 a = client.get("/analytics", headers=th).json()
-check("analytics: active_clients counted", a["active_clients"] == 2)
+check("analytics: active_clients counted", a["active_clients"] >= 2)
 check("analytics: attendance rate computed per client",
       any(row["done"] >= 1 and row["attendance_rate"] is not None for row in a["attendance"]))
 check("analytics: monthly revenue grouped by month",
@@ -351,6 +400,54 @@ check("no token -> announcements/latest 401/403",
 # ---- 16. workout history is available to the client (archive) ----
 hist = client.get(f"/clients/{A_ID}/sessions", headers=ah).json()
 check("client can list ALL their sessions for the history archive", len(hist) >= 3)
+
+# ---- 17. transformations (trainer-managed; minimum 2, no maximum) ----
+check("client CANNOT list transformations (403)",
+      client.get("/transformations", headers=ah).status_code == 403)
+r = client.post("/transformations", headers=th,
+                json={"client_name": "Priya", "before_photo_url": "data:img,b",
+                      "after_photo_url": "data:img,a", "caption": "-8kg in 12 weeks"})
+check("trainer adds a transformation (201)", r.status_code == 201)
+t1 = r.json()["id"]
+t2 = client.post("/transformations", headers=th, json={"client_name": "Ravi", "caption": "-6kg"}).json()["id"]
+check("trainer edits a transformation",
+      client.patch(f"/transformations/{t1}", headers=th, json={"caption": "-9kg"}).json()["caption"] == "-9kg")
+check("client CANNOT add a transformation (403)",
+      client.post("/transformations", headers=ah, json={"client_name": "x"}).status_code == 403)
+check("cannot delete a transformation while only 2 remain (409)",
+      client.delete(f"/transformations/{t1}", headers=th).status_code == 409)
+t3 = client.post("/transformations", headers=th, json={"client_name": "Sara", "caption": "+5kg lean"}).json()["id"]
+check("with a 3rd entry a delete is allowed again (204)",
+      client.delete(f"/transformations/{t3}", headers=th).status_code == 204)
+check("back at 2 entries, delete is blocked again (409)",
+      client.delete(f"/transformations/{t2}", headers=th).status_code == 409)
+check("no upper limit — a 10th+ entry is fine",
+      all(client.post("/transformations", headers=th,
+                      json={"client_name": f"C{i}"}).status_code == 201 for i in range(8)))
+
+# ---- 18. public landing page (no auth) ----
+lp = client.get("/public/landing")
+check("landing page is public (200, no token)", lp.status_code == 200)
+lp = lp.json()
+check("landing shows the trainer name", lp["trainer"]["name"] == "Tina")
+check("landing lists every transformation", len(lp["transformations"]) == 10)
+check("landing stats default to 0 before the trainer sets them",
+      lp["stats"] == {"clients": 0, "transformations": 0, "sessions": 0})
+client.patch("/users/me", headers=th,
+             json={"total_clients_stat": 120, "total_transformations_stat": 95, "total_sessions_stat": 1432})
+check("landing stats are the trainer's typed-in numbers",
+      client.get("/public/landing").json()["stats"] == {"clients": 120, "transformations": 95, "sessions": 1432})
+client.post("/transformations", headers=th, json={"client_name": "One more"})
+check("adding real transformations does NOT change the manual stat",
+      client.get("/public/landing").json()["stats"]["transformations"] == 95)
+check("trainer's /users/me echoes the manual stats back for the editor",
+      client.get("/users/me", headers=th).json()["total_sessions_stat"] == 1432)
+check("landing stat rejects a negative number (422)",
+      client.patch("/users/me", headers=th, json={"total_clients_stat": -3}).status_code == 422)
+client.patch("/users/me", headers=th, json={"bio": "10 years coaching.", "credentials": "NASM-CPT"})
+check("trainer bio + credentials appear on the public landing",
+      client.get("/public/landing").json()["trainer"]["bio"] == "10 years coaching."
+      and client.get("/public/landing").json()["trainer"]["credentials"] == "NASM-CPT")
 
 print(f"\nAll {_passed} smoke checks passed.")
 os.close(_db_fd)

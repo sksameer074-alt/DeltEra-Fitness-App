@@ -52,6 +52,16 @@ class User(Base):
     bmr: Mapped[float | None] = mapped_column(Float, nullable=True)
     tdee: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Trainer public-landing content (only meaningful for role='trainer').
+    bio: Mapped[str | None] = mapped_column(String, nullable=True)
+    credentials: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Landing-page headline numbers. Trainer types these in by hand; they are
+    # NOT counted from the transformations / users / sessions tables.
+    total_clients_stat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_transformations_stat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_sessions_stat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -203,6 +213,10 @@ class DietPhoto(Base):
     )
     date: Mapped[dt_date] = mapped_column(Date, nullable=False)
     photos: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # when the client last changed `photos`; used by the 24h auto-purge job
+    photos_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     trainer_comment: Mapped[str | None] = mapped_column(String, nullable=True)
     trainer_comment_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -276,6 +290,21 @@ class Announcement(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     message: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Transformation(Base):
+    """Before/after showcase entry for the public landing page (trainer-managed)."""
+
+    __tablename__ = "transformations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    client_name: Mapped[str] = mapped_column(String, nullable=False)
+    before_photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    after_photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    caption: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

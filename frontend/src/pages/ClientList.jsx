@@ -26,7 +26,7 @@ export default function ClientList() {
       <div className="row" style={{ alignItems: "center" }}>
         <h1>Clients</h1>
         <Link to="/clients/new">
-          <button>+ New client</button>
+          <button>New client</button>
         </Link>
       </div>
 
@@ -61,7 +61,7 @@ export default function ClientList() {
                   {c.name}
                   {packageTag(c.package) && <span className="tag">{packageTag(c.package)}</span>}
                   {c.feeling_note && (
-                    <div style={{ color: "#888", fontSize: "0.78rem" }}>“{c.feeling_note}”</div>
+                    <div style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>“{c.feeling_note}”</div>
                   )}
                 </td>
                 <td>{c.phone_number}</td>

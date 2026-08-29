@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# throwaway local dev database (recreated + reseeded every session)
+*.sqlite
+deltera_local.sqlite

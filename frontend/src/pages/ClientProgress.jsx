@@ -18,7 +18,7 @@ export default function ClientProgress() {
     <div className="card">
       <p><Link to={`/clients/${id}`}>← Back to client</Link></p>
       <h1>Progress</h1>
-      <p style={{ color: "#888", fontSize: "0.85rem" }}>Read-only — logged by the client.</p>
+      <p style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>Read-only — logged by the client.</p>
       {error && <div className="error">{error}</div>}
 
       <h2>Daily weight — last 7 days</h2>

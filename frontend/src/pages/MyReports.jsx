@@ -50,8 +50,8 @@ export default function MyReports() {
 
   return (
     <div className="card">
-      <h1>My Reports</h1>
-      <p style={{ color: "#888", fontSize: "0.85rem" }}>
+      <h1>My reports</h1>
+      <p style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>
         Upload a PDF or image (blood work, scans, etc.). Files are kept permanently.
       </p>
       {error && <div className="error">{error}</div>}
@@ -74,7 +74,7 @@ export default function MyReports() {
               <a href={r.file_url} target="_blank" rel="noreferrer">
                 {r.note || "report"}
               </a>
-              <span style={{ color: "#888", fontSize: "0.75rem", marginLeft: 8 }}>
+              <span style={{ color: "var(--text-2)", fontSize: "0.75rem", marginLeft: 8 }}>
                 {new Date(r.uploaded_at).toLocaleString()}
               </span>
             </li>

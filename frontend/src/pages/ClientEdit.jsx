@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import ClientForm from "../components/ClientForm.jsx";
 
 export default function ClientEdit() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [error, setError] = useState("");
 
@@ -18,7 +17,7 @@ export default function ClientEdit() {
     delete payload.phone_number;
     delete payload.password;
     await api.updateClient(id, payload);
-    navigate(`/clients/${id}`);
+    return false; // stay on the page; ClientForm shows the "Saved" confirmation
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, getStoredUser } from "../api";
 import { MeasurementsTable, WeightTable } from "../components/ProgressTables.jsx";
+import { useUnsavedGuard } from "../hooks.js";
 
 const MEASURE_FIELDS = [
   ["weight", "Weight (kg)"],
@@ -24,6 +25,15 @@ export default function MyProgress() {
   const [weight, setWeight] = useState("");
   const [measure, setMeasure] = useState({});
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+
+  const hasUnsent = !!weight || Object.values(measure).some((v) => v !== "" && v != null);
+  useUnsavedGuard(hasUnsent);
+
+  function flash(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2500);
+  }
 
   function load() {
     api.listProgressLogs(me.id, 7).then(setLogs).catch((e) => setError(e.message));
@@ -48,6 +58,7 @@ export default function MyProgress() {
     run(async () => {
       await api.logWeight(me.id, { weight: Number(weight) });
       setWeight("");
+      flash("Weight logged");
     });
 
   const submitMeasure = () =>
@@ -56,14 +67,16 @@ export default function MyProgress() {
       for (const [k] of MEASURE_FIELDS) if (measure[k] !== "" && measure[k] != null) body[k] = Number(measure[k]);
       await api.logMeasurements(me.id, body);
       setMeasure({});
+      flash("Measurements logged");
     });
 
   return (
     <div className="card">
-      <h1>My Progress</h1>
+      <h1>My progress</h1>
       {error && <div className="error">{error}</div>}
+      {toast && <span className="toast">{toast}</span>}
 
-      <h2>Daily weight check-in</h2>
+      <h2>Daily weight</h2>
       <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
         <div>
           <label>Today's weight (kg)</label>
@@ -78,7 +91,7 @@ export default function MyProgress() {
 
       <h2 style={{ marginTop: 24 }}>Weekly measurements</h2>
       {loggedThisWeek && (
-        <p style={{ color: "#888", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
           Already logged this week — submitting again updates this week's entry.
         </p>
       )}

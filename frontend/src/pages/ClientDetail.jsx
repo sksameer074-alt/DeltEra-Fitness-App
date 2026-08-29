@@ -29,18 +29,18 @@ function ResetPassword({ clientId }) {
   if (!open) {
     return (
       <div style={{ marginTop: 8 }}>
-        <button onClick={() => setOpen(true)}>Reset password</button>
-        {msg && <div style={{ color: "#2a7", fontSize: "0.85rem" }}>{msg}</div>}
+        <button className="btn btn-secondary" onClick={() => setOpen(true)}>Reset password</button>
+        {msg && <div className="toast" style={{ marginLeft: 8 }}>{msg}</div>}
       </div>
     );
   }
   return (
-    <div className="card" style={{ background: "#fafafa", marginTop: 8 }}>
+    <div className="card subcard" style={{ marginTop: 8 }}>
       <label>New temporary password (min 6 characters)</label>
       <input type="text" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
       {pwErr && <div className="error">{pwErr}</div>}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={submit} disabled={!!pwErr || !pw}>Set password</button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button className="btn btn-primary" onClick={submit} disabled={!!pwErr || !pw}>Set password</button>
         <button className="link" onClick={() => { setOpen(false); setPw(""); setErr(""); }}>Cancel</button>
       </div>
       {err && <div className="error">{err}</div>}
@@ -79,7 +79,7 @@ export default function ClientDetail() {
             <Link to={`/clients/${id}/meal-plan`}><button>Meal plan</button></Link>
             <Link to={`/clients/${id}/supplements`}><button>Supplements</button></Link>
             <Link to={`/clients/${id}/progress`}><button>Progress</button></Link>
-            <Link to={`/clients/${id}/daily-check-in`}><button>Daily Check-in</button></Link>
+            <Link to={`/clients/${id}/meal-check-in`}><button>Meal check-in</button></Link>
             <Link to={`/clients/${id}/reports`}><button>Reports</button></Link>
             <Link to={`/clients/${id}/membership`}><button>Membership</button></Link>
             <Link to={`/clients/${id}/payments`}><button>Payments</button></Link>
@@ -88,7 +88,7 @@ export default function ClientDetail() {
           <ResetPassword clientId={id} />
 
           {pkg && (
-            <p style={{ color: "#666", fontSize: "0.9rem" }}>
+            <p style={{ color: "var(--text-2)", fontSize: "0.9rem" }}>
               Membership: {pkg.sessions_used}/{pkg.total_sessions} used · {pkg.sessions_remaining} remaining
             </p>
           )}
@@ -106,7 +106,7 @@ export default function ClientDetail() {
               <SessionCalendar sessions={summary.sessions} />
             </>
           ) : (
-            <p style={{ color: "#888" }}>No session data.</p>
+            <p style={{ color: "var(--text-2)" }}>No session data.</p>
           )}
         </>
       )}

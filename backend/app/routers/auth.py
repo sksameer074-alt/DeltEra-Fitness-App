@@ -19,8 +19,11 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
             detail="Phone number already registered",
         )
 
-    data = payload.model_dump(exclude={"password"})
-    user = User(**data, password=hash_password(payload.password))
+    # Public signup can only ever create a client. The role is hardcoded here and
+    # any `role` in the request body is ignored — trainers are created out of band
+    # (backend/create_trainer.py).
+    data = payload.model_dump(exclude={"password", "role"})
+    user = User(**data, role="client", password=hash_password(payload.password))
     db.add(user)
     db.commit()
     db.refresh(user)

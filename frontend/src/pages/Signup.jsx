@@ -9,7 +9,6 @@ const initial = {
   name: "",
   phone_number: "",
   password: "",
-  role: "client",
   weight: "",
   height: "",
   age: "",
@@ -21,12 +20,13 @@ const initial = {
   health_condition_comment: "",
 };
 
+// Public signup always creates a client account. The trainer account is created
+// out of band (backend/create_trainer.py) — there is no role picker here.
 export default function Signup() {
   const navigate = useNavigate();
   const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
 
-  const isClient = form.role === "client";
   const phoneErr = form.phone_number ? phoneError(form.phone_number) : "";
   const pwErr = form.password ? passwordError(form.password) : "";
 
@@ -43,30 +43,22 @@ export default function Signup() {
       return;
     }
 
-    // Trainers only provide name / phone / password.
-    let payload = {
+    const payload = {
       name: form.name,
       phone_number: form.phone_number,
       password: form.password,
-      role: form.role,
+      weight: form.weight ? Number(form.weight) : null,
+      height: form.height ? Number(form.height) : null,
+      age: form.age ? Number(form.age) : null,
+      sex: form.sex || null,
+      activity_level: form.activity_level || null,
+      has_injury: form.has_injury,
+      injury_comment: form.has_injury ? form.injury_comment : null,
+      has_health_condition: form.has_health_condition,
+      health_condition_comment: form.has_health_condition
+        ? form.health_condition_comment
+        : null,
     };
-
-    if (isClient) {
-      payload = {
-        ...payload,
-        weight: form.weight ? Number(form.weight) : null,
-        height: form.height ? Number(form.height) : null,
-        age: form.age ? Number(form.age) : null,
-        sex: form.sex || null,
-        activity_level: form.activity_level || null,
-        has_injury: form.has_injury,
-        injury_comment: form.has_injury ? form.injury_comment : null,
-        has_health_condition: form.has_health_condition,
-        health_condition_comment: form.has_health_condition
-          ? form.health_condition_comment
-          : null,
-      };
-    }
 
     try {
       const res = await api.signup(payload);
@@ -81,12 +73,6 @@ export default function Signup() {
     <div className="card">
       <h1>Create your account</h1>
       <form onSubmit={submit}>
-        <label>I am a…</label>
-        <select name="role" value={form.role} onChange={update}>
-          <option value="client">Client</option>
-          <option value="trainer">Trainer</option>
-        </select>
-
         <label>Name</label>
         <input name="name" value={form.name} onChange={update} required />
 
@@ -112,81 +98,77 @@ export default function Signup() {
         />
         {pwErr && <div className="error">{pwErr}</div>}
 
-        {isClient && (
-          <>
-            <div className="row">
-              <div style={{ flex: 1 }}>
-                <label>Weight (kg)</label>
-                <input name="weight" type="number" step="0.1" value={form.weight} onChange={update} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label>Height (cm)</label>
-                <input name="height" type="number" step="0.1" value={form.height} onChange={update} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label>Age</label>
-                <input name="age" type="number" value={form.age} onChange={update} />
-              </div>
-            </div>
+        <div className="row">
+          <div style={{ flex: 1 }}>
+            <label>Weight (kg)</label>
+            <input name="weight" type="number" step="0.1" value={form.weight} onChange={update} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label>Height (cm)</label>
+            <input name="height" type="number" step="0.1" value={form.height} onChange={update} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label>Age</label>
+            <input name="age" type="number" value={form.age} onChange={update} />
+          </div>
+        </div>
 
-            <label>Sex</label>
-            <select name="sex" value={form.sex} onChange={update}>
-              <option value="">Select…</option>
-              {SEX_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o[0].toUpperCase() + o.slice(1)}
-                </option>
-              ))}
-            </select>
+        <label>Sex</label>
+        <select name="sex" value={form.sex} onChange={update}>
+          <option value="">Select…</option>
+          {SEX_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o[0].toUpperCase() + o.slice(1)}
+            </option>
+          ))}
+        </select>
 
-            <label>Activity level</label>
-            <select name="activity_level" value={form.activity_level} onChange={update}>
-              <option value="">Select…</option>
-              {ACTIVITY_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o[0].toUpperCase() + o.slice(1)}
-                </option>
-              ))}
-            </select>
+        <label>Activity level</label>
+        <select name="activity_level" value={form.activity_level} onChange={update}>
+          <option value="">Select…</option>
+          {ACTIVITY_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o[0].toUpperCase() + o.slice(1)}
+            </option>
+          ))}
+        </select>
 
-            <label style={{ marginTop: 16 }}>
-              <input
-                type="checkbox"
-                name="has_injury"
-                checked={form.has_injury}
-                onChange={update}
-                style={{ width: "auto", marginRight: 6 }}
-              />
-              I have an injury
-            </label>
-            {form.has_injury && (
-              <input
-                name="injury_comment"
-                placeholder="Tell us about the injury"
-                value={form.injury_comment}
-                onChange={update}
-              />
-            )}
+        <label style={{ marginTop: 16 }}>
+          <input
+            type="checkbox"
+            name="has_injury"
+            checked={form.has_injury}
+            onChange={update}
+            style={{ width: "auto", marginRight: 6 }}
+          />
+          I have an injury
+        </label>
+        {form.has_injury && (
+          <input
+            name="injury_comment"
+            placeholder="Tell us about the injury"
+            value={form.injury_comment}
+            onChange={update}
+          />
+        )}
 
-            <label>
-              <input
-                type="checkbox"
-                name="has_health_condition"
-                checked={form.has_health_condition}
-                onChange={update}
-                style={{ width: "auto", marginRight: 6 }}
-              />
-              I have a health condition
-            </label>
-            {form.has_health_condition && (
-              <input
-                name="health_condition_comment"
-                placeholder="Tell us about the health condition"
-                value={form.health_condition_comment}
-                onChange={update}
-              />
-            )}
-          </>
+        <label>
+          <input
+            type="checkbox"
+            name="has_health_condition"
+            checked={form.has_health_condition}
+            onChange={update}
+            style={{ width: "auto", marginRight: 6 }}
+          />
+          I have a health condition
+        </label>
+        {form.has_health_condition && (
+          <input
+            name="health_condition_comment"
+            placeholder="Tell us about the health condition"
+            value={form.health_condition_comment}
+            onChange={update}
+          />
         )}
 
         <button type="submit" disabled={!!phoneErr || !!pwErr}>Create account</button>

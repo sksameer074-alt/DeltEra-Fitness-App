@@ -23,6 +23,13 @@ create table if not exists users (
     bmi double precision,
     bmr double precision,
     tdee double precision,
+    -- Public-landing content (only meaningful for role='trainer')
+    bio text,
+    credentials text,
+    -- Landing-page headline numbers. Trainer-typed, NOT counted from any table.
+    total_clients_stat integer,
+    total_transformations_stat integer,
+    total_sessions_stat integer,
     created_at timestamptz not null default now()
 );
 
@@ -111,6 +118,7 @@ create table if not exists diet_photos (
     client_id uuid not null references users(id) on delete cascade,
     date date not null,
     photos jsonb not null default '[]'::jsonb,
+    photos_updated_at timestamptz,   -- when the client last changed photos (for the 24h purge)
     trainer_comment text,
     trainer_comment_at timestamptz,
     trainer_diet_rating integer check (trainer_diet_rating between 1 and 5),
@@ -157,5 +165,15 @@ create index if not exists payments_client_idx on payments (client_id);
 create table if not exists announcements (
     id uuid primary key default gen_random_uuid(),
     message text not null,
+    created_at timestamptz not null default now()
+);
+
+-- Before/after showcase entries for the public landing page (trainer-managed).
+create table if not exists transformations (
+    id uuid primary key default gen_random_uuid(),
+    client_name text not null,
+    before_photo_url text,
+    after_photo_url text,
+    caption text,
     created_at timestamptz not null default now()
 );

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import { useUnsavedGuard } from "../hooks.js";
 
-const METHODS = ["Cash", "PhonePe", "UPI", "Bank Transfer", "Card", "Other"];
+const METHODS = ["Cash", "PhonePe", "UPI", "Bank transfer", "Card", "Other"];
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const BLANK = { amount: "", method: "Cash", date: todayStr(), notes: "" };
 
@@ -11,6 +12,9 @@ export default function ClientPayments() {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState(BLANK);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+
+  useUnsavedGuard(!!(draft.amount || draft.notes));
 
   function load() {
     api.listPayments(id).then(setRows).catch((e) => setError(e.message));
@@ -24,18 +28,27 @@ export default function ClientPayments() {
     try {
       await api.addPayment(id, { ...draft, amount, notes: draft.notes || null });
       setDraft(BLANK);
+      setToast("Payment added");
+      setTimeout(() => setToast(""), 2500);
       load();
     } catch (e) {
       setError(e.message);
     }
   }
 
+  const remove = async (pid) => {
+    if (!window.confirm("Delete this payment?")) return;
+    await api.deletePayment(id, pid);
+    load();
+  };
+
   return (
     <div className="card">
       <p><Link to={`/clients/${id}`}>← Back to client</Link></p>
       <h1>Payments</h1>
-      <p style={{ color: "#b00020", fontSize: "0.85rem" }}>Trainer-only. Never shown to the client.</p>
+      <p className="muted" style={{ fontSize: "0.85rem" }}>Trainer-only. Never shown to the client.</p>
       {error && <div className="error">{error}</div>}
+      {toast && <span className="toast">{toast}</span>}
 
       <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
         <div><label>Amount</label>
@@ -62,7 +75,7 @@ export default function ClientPayments() {
               <td>{p.amount}</td>
               <td>{p.method}</td>
               <td>{p.notes || "—"}</td>
-              <td><button className="mini" onClick={async () => { await api.deletePayment(id, p.id); load(); }}>delete</button></td>
+              <td><button className="mini" onClick={() => remove(p.id)}>Delete</button></td>
             </tr>
           ))}
         </tbody>

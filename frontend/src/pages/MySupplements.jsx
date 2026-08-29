@@ -15,7 +15,7 @@ export default function MySupplements() {
 
   return (
     <div className="card">
-      <h1>My Supplements</h1>
+      <h1>My supplements</h1>
       {rows.length === 0 ? (
         <p>No supplements yet.</p>
       ) : (
@@ -38,7 +38,7 @@ export default function MySupplements() {
           </tbody>
         </table>
       )}
-      <p style={{ color: "#888", fontSize: "0.8rem" }}>Read-only. Managed by your trainer.</p>
+      <p style={{ color: "var(--text-2)", fontSize: "0.8rem" }}>Read-only. Managed by your trainer.</p>
     </div>
   );
 }
