@@ -1,0 +1,23 @@
+# Render blueprint for the Delt_era Fitness API (FastAPI).
+# In Render: New → Blueprint → point at this repo. Then fill in the three
+# `sync: false` secrets (DATABASE_URL, JWT_SECRET, CORS_ORIGINS) in the dashboard.
+services:
+  - type: web
+    name: deltera-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        sync: false # Supabase connection string (use the port-6543 pooler URI)
+      - key: JWT_SECRET
+        sync: false # long random string
+      - key: CORS_ORIGINS
+        sync: false # https://your-frontend.vercel.app
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"

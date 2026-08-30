@@ -5,6 +5,7 @@
    on <html> (manual toggle wins).
    ============================================================ */
 :root {
+  color-scheme: light;
   --bg: #F7F6F2;
   --card: #ffffff;
   --border: #e2e0d8;
@@ -27,6 +28,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #111110;
     --card: #1a1a18;
     --border: #2a2a27;
@@ -48,7 +50,10 @@
   }
 }
 
+:root[data-theme="light"] { color-scheme: light; }
+
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #111110;
   --card: #1a1a18;
   --border: #2a2a27;
@@ -176,11 +181,51 @@ input, select, textarea {
   border-radius: 6px;
   font-size: 0.95rem;
   font-weight: 400;
-  background: var(--bg);
+  /* Always paint our own colours — never fall back to the UA's light-mode
+     input styling, which shows dark text on our dark card in dark mode. */
+  background: var(--card);
   color: var(--text);
+  -webkit-text-fill-color: var(--text); /* Safari overrides `color` on controls */
+  caret-color: var(--accent);
 }
 textarea { font: inherit; font-size: 0.9rem; padding: 8px; }
 input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); outline-offset: 0; }
+
+input::placeholder, textarea::placeholder { color: var(--text-2); opacity: 1; -webkit-text-fill-color: var(--text-2); }
+input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
+
+/* native <select> dropdown list */
+select option { background: var(--card); color: var(--text); }
+
+/* keep autofilled fields on-theme instead of the browser's yellow/white */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+  caret-color: var(--text);
+}
+
+/* checkboxes / radios follow the theme too (keep native box, just tint it) */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--accent);
+  width: auto;
+  -webkit-text-fill-color: initial;
+}
+
+/* custom dropdown arrow so <select> reads correctly on a dark card */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--card);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
+    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: right 14px center, right 9px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
 
 /* ---- buttons ---- */
 button, .btn {

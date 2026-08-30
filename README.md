@@ -3,7 +3,10 @@
 Foundation of a fitness web app.
 
 - **backend/** — Python + FastAPI, SQLAlchemy, Supabase (Postgres)
-- **frontend/** — React (Vite) + React Router
+- **frontend/** — React (Vite) + React Router. Installable **PWA** (manifest +
+  service worker for "Add to Home Screen").
+
+Deploying? Jump to [Deployment (Render + Vercel)](#deployment-render--vercel).
 
 ## What's built
 
@@ -11,6 +14,16 @@ Tables: `users`, `schedules`, `sessions`, `meal_plans`, `supplements`, `notes`,
 `progress_logs`, `weekly_measurements`, `diet_photos`, `reports`, `packages`,
 `payments`, `announcements`, `transformations`.
 
+- **Installable PWA** — `frontend/public/manifest.webmanifest` (name "Delt_era
+  Fitness", bronze `#B8956A` theme colour, `#111110` background, 192/512 +
+  maskable icons) and a minimal `frontend/public/sw.js` service worker
+  (precache the app shell + content-hashed assets; **never** intercepts the
+  cross-origin API). Registered from `main.jsx` in production builds only.
+- **Dark-mode form fields** — every `<input>` / `<textarea>` / `<select>` paints
+  its own `var(--card)` background + `var(--text)` colour (plus
+  `-webkit-text-fill-color`, `::placeholder`, `:-webkit-autofill` and
+  `select option`), and `color-scheme` is pinned per theme, so form text is never
+  the browser's dark-on-dark default when the app theme and OS theme disagree.
 - **Dark / light theme** — one centralized token set in `frontend/src/styles.css`
   (`:root` = light; `@media (prefers-color-scheme: dark)` + `[data-theme]` overrides).
   Follows the device setting automatically; the header has an **Auto / Light / Dark**
@@ -376,6 +389,122 @@ membership** and a couple of transformations from the trainer side.
   # meal-plan/progress-logs/weekly-measurements/diet-photos/reports/packages/sessions -> 403
   # notes/payments -> 403 (trainer-only)
   ```
+
+---
+
+## Deployment (Render + Vercel)
+
+**Architecture:** Supabase (Postgres) ← Render (FastAPI) ← Vercel (static React).
+The frontend learns the backend URL from a build-time env var — nothing is
+hardcoded to localhost.
+
+### Environment variables
+
+**Backend (Render)** — set in the Render dashboard (or answer the `render.yaml`
+prompts):
+
+| Var | Example | Notes |
+|-----|---------|-------|
+| `DATABASE_URL` | `postgresql://postgres.xxxx:PW@aws-0-…pooler.supabase.com:6543/postgres` | Supabase → Project Settings → Database → Connection string. Use the **Transaction pooler** URI (port 6543). `postgres://` / `postgresql://` are both auto-upgraded to `psycopg`. |
+| `JWT_SECRET` | 40+ random chars | `python -c "import secrets;print(secrets.token_urlsafe(48))"` |
+| `CORS_ORIGINS` | `https://deltera.vercel.app` | Your Vercel URL(s), comma-separated, no trailing slash. Add the preview domain too if you test previews. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | optional (default 1440) |
+| `PYTHON_VERSION` | `3.12.7` | Render only |
+
+**Frontend (Vercel):**
+
+| Var | Example | Notes |
+|-----|---------|-------|
+| `VITE_API_URL` | `https://deltera-api.onrender.com` | The Render service URL, no trailing slash. Read at build time by `src/api.js`. |
+
+There is **no Anthropic/OpenAI key** — the app doesn't call any AI service.
+The only secrets are `DATABASE_URL` and `JWT_SECRET`.
+
+### Deploy the backend to Render
+
+1. Push this repo to GitHub (done).
+2. Render → **New → Blueprint** → pick the repo → it reads `render.yaml`.
+   (Or **New → Web Service** manually with: **Root Directory** `backend`,
+   **Build Command** `pip install -r requirements.txt`,
+   **Start Command** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.)
+3. Add the env vars above. `CORS_ORIGINS` can be a placeholder for now — you'll
+   set the real Vercel URL after step "Deploy the frontend".
+4. Deploy. Tables auto-create on first boot (`Base.metadata.create_all`).
+   Check `https://<service>.onrender.com/health` → `{"status":"ok"}` and
+   `/docs` for the API explorer.
+5. **Create the trainer** against the live DB (one time), from your machine:
+   ```bash
+   cd backend
+   DATABASE_URL="<the same Supabase URL>" \
+     .venv/bin/python create_trainer.py --name "Salman" --phone 9000000001 --password "<strong pw>"
+   ```
+   Can't reach Supabase directly? Run it with `--sql` and paste the printed
+   `INSERT` into the Supabase SQL editor instead.
+
+### Deploy the frontend to Vercel
+
+1. Vercel → **Add New → Project** → import the repo.
+2. **Root Directory** `frontend`. Framework preset **Vite** →
+   Build Command `npm run build`, Output Directory `dist` (both auto-detected).
+   `frontend/vercel.json` already adds the SPA rewrite so deep links / refresh work.
+3. **Environment Variables** → add `VITE_API_URL` = your Render URL. Redeploy if
+   you add it after the first build (Vite inlines it at build time).
+4. Deploy, then copy the `*.vercel.app` URL and put it in Render's
+   `CORS_ORIGINS`; let Render redeploy.
+
+### End-to-end test on the live URLs
+
+Replace `API` and `APP` with your real URLs.
+
+```bash
+API=https://deltera-api.onrender.com
+APP=https://deltera.vercel.app
+
+# 0. plumbing
+curl -s $API/health                        # {"status":"ok"}
+curl -s -o /dev/null -w "app: %{http_code}\n" $APP
+
+# 1. trainer login works (created via create_trainer.py)
+curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"phone_number":"9000000001","password":"<pw>"}' \
+  | python3 -c 'import sys,json;print("trainer role:",json.load(sys.stdin)["user"]["role"])'
+
+# 2. signup is locked to clients even when the body says otherwise
+curl -s -X POST $API/auth/signup -H 'Content-Type: application/json' \
+  -d '{"name":"A","phone_number":"1111111111","password":"secret1","role":"trainer"}' \
+  | python3 -c 'import sys,json;print("signup role:",json.load(sys.stdin)["user"]["role"])'  # -> client
+
+# 3. client-to-client isolation on the live DB
+B=$(curl -s -X POST $API/auth/signup -H 'Content-Type: application/json' \
+  -d '{"name":"B","phone_number":"2222222222","password":"secret2"}')
+A_TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"phone_number":"1111111111","password":"secret1"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+B_ID=$(echo $B | python3 -c 'import sys,json;print(json.load(sys.stdin)["user"]["id"])')
+curl -s -o /dev/null -w "A reads B:       %{http_code}\n" $API/users/$B_ID    -H "Authorization: Bearer $A_TOKEN"  # 403
+curl -s -o /dev/null -w "A lists clients: %{http_code}\n" $API/users          -H "Authorization: Bearer $A_TOKEN"  # 403
+for p in meal-plan progress-logs weekly-measurements diet-photos reports packages sessions notes payments; do
+  curl -s -o /dev/null -w "A -> B/$p: %{http_code}\n" $API/clients/$B_ID/$p -H "Authorization: Bearer $A_TOKEN"   # all 403
+done
+```
+
+Then in the browser at `$APP`: sign up a client, log in, confirm you land on
+`/profile`; open dev-tools console and run
+`fetch("<API>/users",{headers:{Authorization:"Bearer "+localStorage.delt_era_token}}).then(r=>console.log(r.status))`
+→ `403`. Log in as the trainer → you land on `/clients` and can open any client.
+
+### Add to Home Screen (PWA) test
+
+Deploy first — the service worker only runs over HTTPS in a production build.
+
+- **Android / Chrome:** open `$APP` → ⋮ menu → **Install app** / **Add to Home
+  screen** → launch it from the icon. It opens with no browser chrome
+  (`display: standalone`), a bronze status bar, and the "Delt_era" name + icon.
+- **iOS / Safari:** open `$APP` → Share → **Add to Home Screen** → **Add**. Launch
+  from the icon → full-screen, no Safari UI.
+- **Desktop Chrome/Edge:** an install icon appears in the address bar.
+- Verify in DevTools → **Application → Manifest** (no errors, icons resolve) and
+  **Application → Service Workers** (`sw.js` "activated and running").
 
 ---
 
