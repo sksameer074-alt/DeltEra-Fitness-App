@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import TiltCard from "../components/TiltCard.jsx";
 
 function packageTag(pkg) {
   if (!pkg) return null;
@@ -22,57 +23,47 @@ export default function ClientList() {
   }, [search]);
 
   return (
-    <div className="card">
-      <div className="row" style={{ alignItems: "center" }}>
-        <h1>Clients</h1>
-        <Link to="/clients/new">
-          <button>New client</button>
-        </Link>
+    <>
+      <div className="card">
+        <div className="row" style={{ alignItems: "center" }}>
+          <h1>Clients</h1>
+          <Link to="/clients/new"><button>New client</button></Link>
+        </div>
+        <input
+          placeholder="Search by name or phone…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {error && <div className="error">{error}</div>}
       </div>
 
-      <input
-        placeholder="Search by name or phone…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      {error && <div className="error">{error}</div>}
-
       {clients.length === 0 ? (
-        <p>No clients found.</p>
+        <div className="card"><p className="muted">No clients found.</p></div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Phone</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {clients.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <span className="avatar">
-                    {c.profile_photo_url
-                      ? <img src={c.profile_photo_url} alt="" />
-                      : (c.name || "?").slice(0, 1).toUpperCase()}
-                  </span>{" "}
-                  {c.name}
-                  {packageTag(c.package) && <span className="tag">{packageTag(c.package)}</span>}
+        <div className="client-grid">
+          {clients.map((c) => (
+            <TiltCard key={c.id} className="card client-card" max={5}>
+              <Link to={`/clients/${c.id}`} className="client-card-link">
+                <span className="avatar client-card-avatar">
+                  {c.profile_photo_url
+                    ? <img src={c.profile_photo_url} alt="" />
+                    : (c.name || "?").slice(0, 1).toUpperCase()}
+                </span>
+                <div className="client-card-body">
+                  <div className="client-card-name">
+                    {c.name}
+                    {packageTag(c.package) && <span className="tag">{packageTag(c.package)}</span>}
+                  </div>
+                  <div className="muted client-card-phone">{c.phone_number}</div>
                   {c.feeling_note && (
-                    <div style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>“{c.feeling_note}”</div>
+                    <div className="client-card-feeling">“{c.feeling_note}”</div>
                   )}
-                </td>
-                <td>{c.phone_number}</td>
-                <td>
-                  <Link to={`/clients/${c.id}`}>View</Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </Link>
+            </TiltCard>
+          ))}
+        </div>
       )}
-    </div>
+    </>
   );
 }

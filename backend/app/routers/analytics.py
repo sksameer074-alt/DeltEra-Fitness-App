@@ -23,7 +23,7 @@ def analytics(
     # attendance rate per client (done vs missed)
     counts: dict = defaultdict(lambda: {"done": 0, "missed": 0})
     for s in db.scalars(select(TrainingSession)):
-        if s.status == "done":
+        if s.status == "completed":
             counts[s.client_id]["done"] += 1
         elif s.status == "missed":
             counts[s.client_id]["missed"] += 1

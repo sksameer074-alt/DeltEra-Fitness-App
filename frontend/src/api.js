@@ -127,19 +127,27 @@ export const api = {
     post(`/admin/purge-diet-photos?older_than_hours=${hours}`),
 };
 
-// Consecutive "done" sessions ending at the most recent decided session.
-// Breaks on "missed"; ignores "upcoming".
+// Consecutive "completed" sessions ending at the most recent decided session.
+// Breaks on "missed"; ignores "upcoming" / "needs_review".
 export function computeStreak(sessions) {
   const decided = sessions
-    .filter((s) => s.status === "done" || s.status === "missed")
+    .filter((s) => s.status === "completed" || s.status === "missed")
     .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
   let n = 0;
   for (const s of decided) {
-    if (s.status === "done") n++;
+    if (s.status === "completed") n++;
     else break;
   }
   return n;
 }
+
+// Human label for a session status.
+export const STATUS_LABEL = {
+  upcoming: "upcoming",
+  needs_review: "needs review",
+  completed: "completed",
+  missed: "missed",
+};
 
 export const MEAL_PLAN_WORD_LIMIT = 5000;
 export const MAX_DIET_PHOTOS = 10;

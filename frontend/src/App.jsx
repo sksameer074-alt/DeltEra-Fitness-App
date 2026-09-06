@@ -1,10 +1,39 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearSession, getStoredUser } from "./api";
 import Layout from "./components/Layout.jsx";
 import PackageBanner from "./components/PackageBanner.jsx";
 
+// Content-column width per page type.
+//   wide (~1340px): data-heavy pages — lists, tables, calendars, analytics
+//   narrow (~760px): single-column forms
+//   default (~1000px): everything else
+const WIDE = [
+  /^\/clients$/,
+  /^\/analytics$/,
+  /^\/announcements$/,
+  /^\/transformations$/,
+  /^\/clients\/[^/]+$/, // client detail
+  /^\/clients\/[^/]+\/(workouts|progress|schedule|meal-check-in|payments)$/,
+  /^\/(workouts|progress|meal-check-in)$/,
+];
+const NARROW = [
+  /^\/(login|signup|profile)$/,
+  /^\/clients\/new$/,
+  /^\/clients\/[^/]+\/edit$/,
+  /^\/(meal-plan|supplements|reports)$/,
+  /^\/clients\/[^/]+\/(meal-plan|supplements|notes|membership|reports)$/,
+];
+
+function widthClass(pathname) {
+  if (pathname === "/") return ""; // landing manages its own full-bleed layout
+  if (NARROW.some((re) => re.test(pathname))) return " is-narrow";
+  if (WIDE.some((re) => re.test(pathname))) return " is-wide";
+  return "";
+}
+
 export default function App() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const user = getStoredUser();
 
   function logout() {
@@ -14,7 +43,7 @@ export default function App() {
 
   return (
     <Layout>
-      <div className="container">
+      <div className={"container" + widthClass(pathname)}>
         {user && (
           <nav>
             {user.role === "trainer" && <NavLink to="/clients">Clients</NavLink>}

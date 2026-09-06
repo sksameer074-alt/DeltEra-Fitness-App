@@ -31,12 +31,26 @@ def check(label, cond):
     _passed += 1
 
 
+def signup_body(name, phone, pw, **overrides):
+    """A full, valid signup payload. Every field is required except the
+    injury / health-condition info."""
+    body = {
+        "name": name,
+        "phone_number": phone,
+        "password": pw,
+        "weight": 70.0,
+        "height": 175.0,
+        "age": 30,
+        "sex": "male",
+        "activity_level": "moderately active",
+    }
+    body.update(overrides)
+    return body
+
+
 def signup(name, phone, pw, role="client"):
     # `role` is intentionally still sent to prove the endpoint ignores it.
-    r = client.post(
-        "/auth/signup",
-        json={"name": name, "phone_number": phone, "password": pw, "role": role},
-    )
+    r = client.post("/auth/signup", json=signup_body(name, phone, pw, role=role))
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -70,13 +84,39 @@ monday = today - timedelta(days=today.weekday())
 
 # ---- 0. phone + password validation ----
 check("signup rejects a non-10-digit phone (422)",
-      client.post("/auth/signup", json={"name": "X", "phone_number": "12345", "password": "secret1"}).status_code == 422)
+      client.post("/auth/signup", json=signup_body("X", "12345", "secret1")).status_code == 422)
 check("signup rejects a phone with letters (422)",
-      client.post("/auth/signup", json={"name": "X", "phone_number": "12345abcde", "password": "secret1"}).status_code == 422)
+      client.post("/auth/signup", json=signup_body("X", "12345abcde", "secret1")).status_code == 422)
 check("signup rejects a password under 6 chars (422)",
-      client.post("/auth/signup", json={"name": "X", "phone_number": "1000000009", "password": "abc"}).status_code == 422)
+      client.post("/auth/signup", json=signup_body("X", "1000000009", "abc")).status_code == 422)
 check("trainer create-client rejects a bad phone (422)",
       client.post("/clients", headers=th, json={"name": "X", "phone_number": "99", "password": "secret1"}).status_code == 422)
+
+# ---- 0b. signup: every field required EXCEPT injury / health info ----
+check("signup rejects a missing weight (422)",
+      client.post("/auth/signup",
+                  json={k: v for k, v in signup_body("No Weight", "1000000060", "secret6").items()
+                        if k != "weight"}).status_code == 422)
+check("signup rejects a missing sex (422)",
+      client.post("/auth/signup",
+                  json={k: v for k, v in signup_body("No Sex", "1000000061", "secret6").items()
+                        if k != "sex"}).status_code == 422)
+check("signup rejects an invalid activity_level (422)",
+      client.post("/auth/signup",
+                  json=signup_body("Bad Act", "1000000062", "secret6",
+                                   activity_level="super active")).status_code == 422)
+_hc = client.post("/auth/signup", json=signup_body("Healthy", "1000000063", "secret6"))
+check("signup with NO injury/health fields still succeeds (they are optional)",
+      _hc.status_code == 201)
+check("signup stores the client's timezone when provided",
+      client.post("/auth/signup",
+                  json=signup_body("TZ User", "1000000064", "secret6",
+                                   timezone="America/Chicago")).json()["user"]["timezone"]
+      == "America/Chicago")
+check("signup rejects a bogus timezone (422)",
+      client.post("/auth/signup",
+                  json=signup_body("Bad TZ", "1000000065", "secret6",
+                                   timezone="Mars/Olympus")).status_code == 422)
 
 # ---- public signup can NEVER create a trainer ----
 check("public signup ignores role=client and creates a client", alice["user"]["role"] == "client")
@@ -85,7 +125,7 @@ check("public signup ignores role=trainer and still creates a client",
       _locked["user"]["role"] == "client")
 _raw = client.post(
     "/auth/signup",
-    json={"name": "Eve", "phone_number": "1000000051", "password": "secret51", "role": "trainer"},
+    json=signup_body("Eve", "1000000051", "secret51", role="trainer"),
 )
 check("a hand-crafted signup body with role=trainer still yields a client",
       _raw.status_code == 201 and _raw.json()["user"]["role"] == "client")
@@ -130,14 +170,14 @@ s_tue = mk_session(1)
 s_wed = mk_session(2)
 
 r = client.get(f"/clients/{A_ID}/sessions/summary", headers=ah).json()
-check("week summary starts with 0 done", r["done"] == 0 and r["total"] == 3)
+check("week summary starts with 0 completed", r["completed"] == 0 and r["total"] == 3)
 
 # trainer marks outcomes for this week's sessions
-client.patch(f"/clients/{A_ID}/sessions/{s_mon['id']}", headers=th, json={"status": "done"})
+client.patch(f"/clients/{A_ID}/sessions/{s_mon['id']}", headers=th, json={"status": "completed"})
 client.patch(f"/clients/{A_ID}/sessions/{s_tue['id']}", headers=th, json={"status": "missed"})
-client.patch(f"/clients/{A_ID}/sessions/{s_wed['id']}", headers=th, json={"status": "done"})
+client.patch(f"/clients/{A_ID}/sessions/{s_wed['id']}", headers=th, json={"status": "completed"})
 r = client.get(f"/clients/{A_ID}/sessions/summary", headers=ah).json()
-check("after marking: done counter updates", r["done"] == 2)
+check("after marking: completed counter updates", r["completed"] == 2)
 check("after marking: missed counter updates", r["missed"] == 1)
 
 # trainer posts workout details on the next (future) session
@@ -157,7 +197,7 @@ check("client sees next session's workout_details once posted",
 check("client CANNOT create a session (403)",
       client.post(f"/clients/{A_ID}/sessions", headers=ah, json={"date": str(today)}).status_code == 403)
 check("client CANNOT edit a session (403)",
-      client.patch(f"/clients/{A_ID}/sessions/{future['id']}", headers=ah, json={"status": "done"}).status_code == 403)
+      client.patch(f"/clients/{A_ID}/sessions/{future['id']}", headers=ah, json={"status": "completed"}).status_code == 403)
 check("client CANNOT see another client's sessions (403)",
       client.get(f"/clients/{B_ID}/sessions", headers=ah).status_code == 403)
 
@@ -318,7 +358,7 @@ check("client CANNOT read ANOTHER client's reports (403)",
       client.get(f"/clients/{B_ID}/reports", headers=ah).status_code == 403)
 
 # ---- 11. session rating endpoints are GONE (ratings moved to Daily Check-in) ----
-sid = next(s for s in client.get(f"/clients/{A_ID}/sessions", headers=th).json() if s["status"] == "done")["id"]
+sid = next(s for s in client.get(f"/clients/{A_ID}/sessions", headers=th).json() if s["status"] == "completed")["id"]
 check("old client rating endpoint no longer exists (404/405)",
       client.patch(f"/clients/{A_ID}/sessions/{sid}/rating", headers=ah,
                    json={"client_rating": 4}).status_code in (404, 405))
@@ -347,14 +387,15 @@ check("client CANNOT create a package (403)",
       client.post(f"/clients/{B_ID}/packages", headers=bh, json={"total_sessions": 5}).status_code == 403)
 
 bs = client.post(f"/clients/{B_ID}/sessions", headers=th, json={"date": str(today), "status": "upcoming"}).json()
-client.patch(f"/clients/{B_ID}/sessions/{bs['id']}", headers=th, json={"status": "done"})
-check("marking a session done auto-increments sessions_used",
+client.patch(f"/clients/{B_ID}/sessions/{bs['id']}", headers=th, json={"status": "completed"})
+check("marking a session completed auto-increments sessions_used",
       client.get(f"/clients/{B_ID}/packages/current", headers=th).json()["sessions_used"] == 1)
 check("...and recalculates sessions_remaining",
       client.get(f"/clients/{B_ID}/packages/current", headers=th).json()["sessions_remaining"] == 11)
-client.patch(f"/clients/{B_ID}/sessions/{bs['id']}", headers=th, json={"status": "upcoming"})
-check("undoing a done session decrements sessions_used",
+client.patch(f"/clients/{B_ID}/sessions/{bs['id']}", headers=th, json={"status": "needs_review"})
+check("un-completing a session decrements sessions_used",
       client.get(f"/clients/{B_ID}/packages/current", headers=th).json()["sessions_used"] == 0)
+client.patch(f"/clients/{B_ID}/sessions/{bs['id']}", headers=th, json={"status": "upcoming"})
 
 # last-session alert surfaces on the client's own record
 client.post(f"/clients/{B_ID}/packages", headers=th, json={"total_sessions": 1})
@@ -448,6 +489,96 @@ client.patch("/users/me", headers=th, json={"bio": "10 years coaching.", "creden
 check("trainer bio + credentials appear on the public landing",
       client.get("/public/landing").json()["trainer"]["bio"] == "10 years coaching."
       and client.get("/public/landing").json()["trainer"]["credentials"] == "NASM-CPT")
+
+# ---- 19. session auto-generation from the weekly schedule (B1) ----
+from datetime import datetime as _dt
+from datetime import timezone as _tz
+
+from app.services import (  # noqa: E402
+    flip_due_sessions_to_review,
+    generate_sessions_from_schedules,
+)
+from app.timeutil import IST as _IST  # noqa: E402
+from app.timeutil import ist_slot_to_utc_instant  # noqa: E402
+
+# give Bob a Mon + Thu 18:00 IST template
+client.put(f"/clients/{B_ID}/schedule", headers=th,
+           json={"entries": [{"day_of_week": 0, "time": "18:00"},
+                             {"day_of_week": 3, "time": "18:00"}]})
+before = len(client.get(f"/clients/{B_ID}/sessions", headers=th).json())
+made1 = generate_sessions_from_schedules(days_ahead=14)
+after1 = client.get(f"/clients/{B_ID}/sessions", headers=th).json()
+gen = [s for s in after1 if s["auto_generated"]]
+check("generation creates upcoming sessions from the template",
+      len(gen) >= 3 and all(s["status"] == "upcoming" for s in gen))
+check("every generated session has a starts_at instant",
+      all(s["starts_at"] and "T" in s["starts_at"] for s in gen))
+# IST Mon/Thu 18:00 -> 12:30 UTC (SQLite drops the tz suffix; Postgres keeps it)
+check("generated starts_at is the correct UTC time (12:30 for 18:00 IST)",
+      all(s["starts_at"][11:16] == "12:30" for s in gen))
+made2 = generate_sessions_from_schedules(days_ahead=14)
+after2 = client.get(f"/clients/{B_ID}/sessions", headers=th).json()
+check("a second generation run creates NO duplicates",
+      made2 == 0 and len(after2) == len(after1))
+
+# cancel one occurrence (-> missed) — it must not come back
+g0 = gen[0]
+client.patch(f"/clients/{B_ID}/sessions/{g0['id']}", headers=th, json={"status": "missed"})
+generate_sessions_from_schedules(days_ahead=14)
+still = client.get(f"/clients/{B_ID}/sessions", headers=th).json()
+check("a cancelled generated occurrence is not regenerated",
+      len([s for s in still if s["starts_at"] == g0["starts_at"]]) == 1)
+
+# ---- 20. status automation: upcoming -> needs_review when past due (B2) ----
+past = client.post(f"/clients/{B_ID}/sessions", headers=th,
+                   json={"date": str(today - timedelta(days=1)), "time": "09:00"}).json()
+fut = client.post(f"/clients/{B_ID}/sessions", headers=th,
+                  json={"date": str(today + timedelta(days=3)), "time": "09:00"}).json()
+check("a manual session with a time gets a UTC starts_at",
+      past["starts_at"] is not None)
+flipped = flip_due_sessions_to_review()
+past_now = client.get(f"/clients/{B_ID}/sessions", headers=th).json()
+pa = next(s for s in past_now if s["id"] == past["id"])
+fu = next(s for s in past_now if s["id"] == fut["id"])
+check("review-flip moves a past-due upcoming session to needs_review",
+      pa["status"] == "needs_review")
+check("review-flip leaves a future upcoming session alone", fu["status"] == "upcoming")
+check("review-flip never auto-sets completed or missed",
+      pa["status"] != "completed" and pa["status"] != "missed")
+
+# trainer resolves a needs_review session
+r = client.patch(f"/clients/{B_ID}/sessions/{past['id']}", headers=th,
+                 json={"status": "completed", "notes": "Full session, hit all lifts"})
+check("trainer marks a needs_review session completed + adds notes",
+      r.json()["status"] == "completed" and r.json()["notes"].startswith("Full"))
+check("client CANNOT edit session notes (403)",
+      client.patch(f"/clients/{B_ID}/sessions/{past['id']}", headers=bh,
+                   json={"notes": "hax"}).status_code == 403)
+
+# ---- 21. timezone conversion is DST-aware (B3) ----
+jan = _dt(2026, 1, 15, 17, 0, tzinfo=_tz.utc)
+jul = _dt(2026, 7, 15, 17, 0, tzinfo=_tz.utc)
+from zoneinfo import ZoneInfo as _Z  # noqa: E402
+ny = _Z("America/New_York")
+check("America/New_York is UTC-5 in January (EST)",
+      jan.astimezone(ny).utcoffset().total_seconds() == -5 * 3600)
+check("America/New_York is UTC-4 in July (EDT)",
+      jul.astimezone(ny).utcoffset().total_seconds() == -4 * 3600)
+check("IST slot 18:00 Mon resolves to 12:30 UTC (fixed +5:30)",
+      ist_slot_to_utc_instant(0, "18:00", date(2026, 2, 2)).strftime("%H:%M") == "12:30")
+me_tz = client.patch("/users/me", headers=bh, json={"timezone": "America/Denver"})
+check("client can set a manual timezone override",
+      me_tz.status_code == 200 and me_tz.json()["timezone"] == "America/Denver")
+check("client can clear the override back to auto",
+      client.patch("/users/me", headers=bh, json={"timezone": None}).json()["timezone"] is None)
+
+# ---- 22. manual admin triggers for the session jobs ----
+check("client CANNOT trigger session generation (403)",
+      client.post("/admin/generate-sessions", headers=ah).status_code == 403)
+check("trainer can trigger session generation",
+      client.post("/admin/generate-sessions", headers=th).status_code == 200)
+check("trainer can trigger the review-flip",
+      client.post("/admin/flip-due-sessions", headers=th).status_code == 200)
 
 print(f"\nAll {_passed} smoke checks passed.")
 os.close(_db_fd)

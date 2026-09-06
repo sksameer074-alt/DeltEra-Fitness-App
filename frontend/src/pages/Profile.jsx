@@ -1,9 +1,56 @@
 import { useEffect, useRef, useState } from "react";
-import { api, computeStreak, passwordError } from "../api";
+import { api, computeStreak, passwordError, setSession, getToken } from "../api";
 import ProfileView from "../components/ProfileView.jsx";
 import SaveBar from "../components/SaveBar.jsx";
 import { fileToDownscaledDataUrl } from "../components/imageFile.js";
 import { useUnsavedGuard } from "../hooks.js";
+import { browserZone, US_ZONES, zoneAbbr } from "../tz.js";
+
+function TimezoneCard({ user, onSaved }) {
+  const [choice, setChoice] = useState(user.timezone || "");
+  const saved = useRef(user.timezone || "");
+  const [error, setError] = useState("");
+  const dirty = choice !== saved.current;
+  const auto = browserZone();
+
+  async function save() {
+    setError("");
+    try {
+      const updated = await api.updateMe({ timezone: choice || null });
+      saved.current = choice;
+      const tok = getToken();
+      if (tok) setSession(tok, updated);
+      onSaved?.(updated);
+    } catch (e) {
+      setError(e.message);
+      throw e;
+    }
+  }
+
+  const effective = choice || auto;
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Timezone</h2>
+      <p className="muted" style={{ fontSize: "0.85rem" }}>
+        Session and schedule times are shown in your timezone. It's auto-detected
+        from your browser — override it here if that's wrong.
+      </p>
+      <label>Your timezone</label>
+      <select value={choice} onChange={(e) => setChoice(e.target.value)}>
+        <option value="">Auto-detect ({auto})</option>
+        {US_ZONES.map((z) => (
+          <option key={z.id} value={z.id}>
+            {z.label} — {z.id}
+          </option>
+        ))}
+      </select>
+      <p className="muted" style={{ fontSize: "0.82rem", marginTop: 6 }}>
+        Currently showing times as <strong>{effective}</strong> ({zoneAbbr(effective)}).
+      </p>
+      <SaveBar dirty={dirty} onSave={save} label="Save timezone" error={error} />
+    </div>
+  );
+}
 
 function Avatar({ url, name }) {
   return (
@@ -145,6 +192,8 @@ export default function Profile() {
 
         <SaveBar dirty={dirty} onSave={save} error={error} />
       </div>
+
+      <TimezoneCard user={user} onSaved={setUser} />
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Profile details</h2>

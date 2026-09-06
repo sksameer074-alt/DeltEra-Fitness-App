@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Transformation, User
-from ..schemas import LandingOut, PublicTrainer, TransformationOut
+from ..schemas import LandingContent, LandingOut, PublicTrainer, TransformationOut
 
 # No authentication — this is the public marketing page.
 router = APIRouter(prefix="/public", tags=["public"])
@@ -38,4 +38,7 @@ def landing(db: Session = Depends(get_db)):
             "transformations": (trainer.total_transformations_stat or 0) if trainer else 0,
             "sessions": (trainer.total_sessions_stat or 0) if trainer else 0,
         },
+        content=LandingContent.model_validate(
+            (trainer.landing_content or {}) if trainer else {}
+        ),
     )

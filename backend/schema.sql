@@ -30,34 +30,48 @@ create table if not exists users (
     total_clients_stat integer,
     total_transformations_stat integer,
     total_sessions_stat integer,
+    -- Trainer-edited landing-page content (hero copy, why-choose-us, testimonials,
+    -- FAQ, contact). Shaped by schemas.LandingContent.
+    landing_content jsonb not null default '{}'::jsonb,
+    -- Client's IANA timezone (e.g. 'America/New_York'); NULL = auto-detect in browser.
+    timezone text,
     created_at timestamptz not null default now()
 );
 
 create index if not exists users_role_idx on users (role);
 
--- One weekly training slot per row. `time` is India Standard Time ("HH:MM").
+-- One weekly training slot per row. `day_of_week` + `time` are the trainer's
+-- authoring format, in IST (fixed UTC+5:30, no DST). Concrete sessions store
+-- their instant in UTC (sessions.starts_at).
 create table if not exists schedules (
     id uuid primary key default gen_random_uuid(),
     client_id uuid not null references users(id) on delete cascade,
-    day_of_week integer not null check (day_of_week between 0 and 6),  -- 0=Mon .. 6=Sun
-    "time" text not null
+    day_of_week integer not null check (day_of_week between 0 and 6),  -- 0=Mon .. 6=Sun, IST
+    "time" text not null                                              -- "HH:MM" IST
 );
 
 create index if not exists schedules_client_idx on schedules (client_id);
 
--- Dated training sessions with an outcome status.
+-- Training sessions. Auto-generated from the weekly template (auto_generated=true)
+-- or added manually by the trainer. starts_at is the scheduled instant in UTC.
+-- Status: upcoming -> (time passes) needs_review -> completed | missed.
 create table if not exists sessions (
     id uuid primary key default gen_random_uuid(),
     client_id uuid not null references users(id) on delete cascade,
-    date date not null,
-    status text not null default 'upcoming' check (status in ('upcoming', 'done', 'missed')),
-    workout_details text,
+    date date not null,                        -- IST calendar date (for weekly grouping)
+    starts_at timestamptz,                      -- scheduled instant, UTC
+    status text not null default 'upcoming'
+        check (status in ('upcoming', 'needs_review', 'completed', 'missed')),
+    auto_generated boolean not null default false,
+    workout_details text,                      -- shown to the client ahead of time
+    notes text,                                -- trainer's private session log
     client_rating integer check (client_rating between 1 and 5),
     client_comment text,
     trainer_rating integer check (trainer_rating between 1 and 5)
 );
 create index if not exists sessions_client_idx on sessions (client_id);
 create index if not exists sessions_date_idx on sessions (date);
+create index if not exists sessions_starts_at_idx on sessions (starts_at);
 
 -- One free-text meal plan per client (trainer-written, <= 5000 words enforced in the API).
 -- NOTE: this replaced an earlier per-entry meal_plans table. If upgrading an existing

@@ -126,8 +126,34 @@ Meal plan, Supplements, Progress, Reports, Payments, Notes). Trainer top nav add
 - **Meal plan** — one free-text field per client, trainer-written, **5,000-word cap**
   enforced on the frontend (live counter, Save disabled when over) *and* the backend
   (`422`). Client sees it read-only with a "last updated" timestamp.
-- **Sessions** — unchanged: manual creation, mark done/missed, post next-day workout
-  details. Client's "My Week" is a colour-coded calendar + done/remaining counter.
+- **Sessions — auto-generated + status lifecycle.**
+  - A daily job (APScheduler, 02:30 UTC — also runs at boot) generates `sessions`
+    for the next **14 days** from each client's weekly `schedules` template.
+    Dedup: an exact slot that already has a session is skipped; a day with a
+    manual (non-`auto_generated`) session is skipped. Deleting an auto session
+    lets it regenerate — use **Missed** to skip one occurrence for good.
+  - The trainer can still add a one-off (`POST /clients/{id}/sessions` with an
+    optional IST `time`) and edit/cancel a single occurrence without touching the
+    rest of the series.
+  - Status: **`upcoming` → `needs_review` → `completed` | `missed`**. A job every
+    20 min flips past-due `upcoming` sessions to `needs_review` (never auto-sets
+    completed/missed — offline coaching, the trainer decides). Trainer resolves a
+    `needs_review` in one click.
+  - `sessions.notes` — the trainer's private per-session log (explicit Save,
+    alongside the client-facing `workout_details`).
+  - Package `sessions_used` now counts **`completed`** sessions (was "done").
+  - Manual triggers: `POST /admin/generate-sessions`, `POST /admin/flip-due-sessions`.
+- **Timezone — trainer in IST, clients anywhere.**
+  - The weekly `schedules` template is authored in **IST** (fixed UTC+5:30, no
+    DST). Concrete sessions store their instant in **UTC** (`sessions.starts_at`).
+  - Trainer views show IST ("6:00 PM IST"); client views convert to the client's
+    own zone with the abbreviation ("8:30 AM EDT"), DST-correct (Luxon on the
+    frontend, `zoneinfo` on the backend). Weekly-template conversion can move a
+    slot to a different weekday and the client calendar reflects that.
+  - `users.timezone` — auto-detected from the browser (`Intl`), refreshed on
+    login, and overridable on the client's **Profile** page (ET/CT/MT/PT + more).
+  - Migration for existing rows: `backend/migrate_sessions.py` (adds columns,
+    `done`→`completed`, backfills `starts_at` from the schedule / noon-IST).
 - **Progress → daily check-in** (`progress_logs`) — client logs weight once a day
   (re-logging overwrites the day), sees the last 7 days; trainer sees it read-only.
 - **Progress → weekly measurements** (`weekly_measurements`) — client logs
@@ -139,7 +165,9 @@ Meal plan, Supplements, Progress, Reports, Payments, Notes). Trainer top nav add
   whole day**, stored with its timestamp.
   Photos are downscaled client-side and stored as data URLs — swap for Supabase
   Storage in production.
-- Schedule and meal times are stored/shown in **IST**.
+- **Signup — all fields required** except injury / health-condition info (which
+  stays optional). Enforced inline on the form *and* on the backend (`422`).
+- Meal-plan "last updated" and other timestamps render in the viewer's locale.
 
 ---
 
@@ -319,11 +347,13 @@ curl -s -o /dev/null -w "client edits schedule:  %{http_code}\n" \
 ```bash
 cd backend && source .venv/bin/activate && pip install httpx && python smoke_test.py
 ```
-Runs **127 assertions**: everything above plus the **24h diet-photo purge**
-(clears photos, keeps trainer comment/rating, is idempotent, leaves fresh photos
-alone), **transformations** CRUD + the **minimum-2 rule**, **manual landing stats**
-(typed by the trainer, never counted from data), **locked trainer signup**
-(`role` is always `client`), and the **public landing page** (no auth).
+Runs **152 assertions**: everything above plus the **24h diet-photo purge**,
+**transformations** CRUD + **minimum-2 rule**, **manual landing stats**, **locked
+trainer signup**, the **public landing page**, **session auto-generation**
+(no duplicates on repeat runs, cancelled occurrences not regenerated),
+**status automation** (`upcoming`→`needs_review` timing, never auto-completed),
+**DST-aware timezone conversion** (EST/EDT boundary, IST fixed +5:30), and
+**required signup fields** (health info optional).
 
 ## How to test (in the browser)
 
@@ -347,6 +377,21 @@ membership** and a couple of transformations from the trainer side.
 - **Trainer signup locked** — the **Sign up** page has no role picker and always
   creates a client. Even `POST /auth/signup` with `{"role":"trainer"}` (via
   dev-tools / curl) returns a client account.
+- **Signup fields** — the **Create account** button stays disabled until name,
+  phone, password, weight, height, age, sex and activity level are all filled;
+  the injury / health-condition section is explicitly optional.
+- **Sessions auto-generate** — Salman → open the client → **Schedule** → tick a
+  couple of weekdays with times → **Save schedule**. Then **Workouts** → sessions
+  for the next 2 weeks appear (marked "· auto"). Or hit `POST /admin/generate-sessions`.
+- **Status lifecycle** — a session past its time shows **needs review** (amber);
+  Salman clicks **Completed** or **Missed**. `Completed` bumps the membership's
+  "used" count; **Reopen** puts it back to needs-review. Add a private **Session
+  note** and hit **Save details & notes**.
+- **Timezone** — as the client, open **Profile → Timezone**: it shows your
+  auto-detected zone. Switch it to **Pacific (PT)** → **Save timezone** → open
+  **Workouts**: every time re-labels ("8:30 AM EDT" → "5:30 AM PDT"), and a
+  07:00-IST slot can land on a different weekday in the "Usual weekly times" grid.
+  The trainer's Workouts/Schedule views always stay in IST.
 - **Theme** — the header toggle cycles **Auto → Light → Dark** and sticks across
   reloads. With it on Auto, flip your OS appearance and the app follows. The faint
   DELT_ERA watermark sits behind every page. Calm palette / regular weight everywhere.
@@ -432,7 +477,15 @@ The only secrets are `DATABASE_URL` and `JWT_SECRET`.
 4. Deploy. Tables auto-create on first boot (`Base.metadata.create_all`).
    Check `https://<service>.onrender.com/health` → `{"status":"ok"}` and
    `/docs` for the API explorer.
-5. **Create the trainer** against the live DB (one time), from your machine:
+5. **Upgrading an existing production DB** (adds `sessions.starts_at` /
+   `auto_generated` / `notes`, `users.timezone`, widens the status check, and
+   backfills `done`→`completed` + `starts_at`):
+   ```bash
+   cd backend
+   DATABASE_URL="<the same Supabase URL>" .venv/bin/python migrate_sessions.py
+   ```
+   Idempotent — safe to re-run. A brand-new DB doesn't need it.
+6. **Create the trainer** against the live DB (one time), from your machine:
    ```bash
    cd backend
    DATABASE_URL="<the same Supabase URL>" \
@@ -512,17 +565,18 @@ Deploy first — the service worker only runs over HTTPS in a production build.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| POST | `/auth/signup` · `/auth/login` | none | phone = 10 digits, password ≥ 6 (`422`); signup **always** creates `role="client"` (any `role` in the body is ignored) |
+| POST | `/auth/signup` · `/auth/login` | none | phone = 10 digits, password ≥ 6, **name/weight/height/age/sex/activity_level required** (`422`); injury/health optional; optional `timezone`. Signup **always** creates `role="client"` (any `role` ignored) |
 | POST | `/clients/{id}/reset-password` | **trainer** | `{new_password}` (≥6) |
 | POST | `/users/me/change-password` | self | `{current_password, new_password}`; `400` if current wrong |
-| PATCH | `/users/me` | self | `{profile_photo_url?, feeling_note?, bio?, credentials?, total_clients_stat?, total_transformations_stat?, total_sessions_stat?}` — self-service + trainer landing content/stats (stats `≥ 0`) |
+| PATCH | `/users/me` | self | `{profile_photo_url?, feeling_note?, timezone?, bio?, credentials?, landing_content?, total_*_stat?}` — self-service + client timezone override + trainer landing content/stats |
 | GET | `/users/me` | any user | own record incl. `bmi`/`bmr`/`tdee` and `package` brief |
 | GET | `/users?search=` | trainer | client list, matches name or phone |
 | GET | `/users/{id}` | trainer any / client self | 403 otherwise |
 | POST·PATCH | `/clients[/{id}]` | trainer | create / edit client incl. `bmi`/`bmr`/`tdee` |
-| GET·PUT | `/clients/{id}/schedule` | GET trainer/self · PUT trainer | weekly time template (IST) |
-| GET | `/clients/{id}/sessions[/summary]` | trainer any / client self | list · this-week counters + `next_session` |
-| POST·PATCH·DELETE | `/clients/{id}/sessions[/{sid}]` | trainer | create / mark done·missed / workout_details (session rating endpoints removed) |
+| GET·PUT | `/clients/{id}/schedule` | GET trainer/self · PUT trainer | weekly template, authored in IST |
+| GET | `/clients/{id}/sessions[/summary]` | trainer any / client self | list (each has UTC `starts_at`) · summary counters `completed`/`needs_review`/`missed`/`upcoming`/`remaining` |
+| POST·PATCH·DELETE | `/clients/{id}/sessions[/{sid}]` | trainer | one-off create (`{date, time?}` IST) / set `status` (`upcoming`·`needs_review`·`completed`·`missed`) / `workout_details` / `notes` |
+| POST | `/admin/generate-sessions` · `/admin/flip-due-sessions` | **trainer** | run the session jobs now |
 | GET | `/clients/{id}/meal-plan` | trainer any / client self | `{plan_text, updated_at, word_count, word_limit}` |
 | PUT | `/clients/{id}/meal-plan` | **trainer** | `{plan_text}`; `422` if > 5000 words |
 | GET·POST·PATCH·DELETE | `/clients/{id}/supplements[/{sid}]` | GET trainer/self · writes trainer | |

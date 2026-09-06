@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, setSession } from "../api";
+import { browserZone } from "../tz.js";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,6 +18,16 @@ export default function Login() {
     try {
       const res = await api.login(form);
       setSession(res.access_token, res.user);
+      // Keep the client's timezone fresh from the browser if they haven't
+      // set a manual override.
+      if (res.user.role === "client" && !res.user.timezone) {
+        try {
+          const updated = await api.updateMe({ timezone: browserZone() });
+          setSession(res.access_token, updated);
+        } catch {
+          /* non-blocking */
+        }
+      }
       navigate("/");
     } catch (err) {
       setError(err.message);

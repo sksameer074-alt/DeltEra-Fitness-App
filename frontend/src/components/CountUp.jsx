@@ -1,27 +1,12 @@
-import { animate, useInView } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useCountUp } from "../hooks.js";
 
-// Landing-page only: counts up from 0 to `to` when scrolled into view.
-// `delay` staggers multiple counters; `suffix` appends e.g. "+".
-export default function CountUp({ to, duration = 1.1, delay = 0, suffix = "" }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: "-40px" });
-  const [val, setVal] = useState(0);
-
-  useEffect(() => {
-    if (!inView) return;
-    const controls = animate(0, to, {
-      duration,
-      delay,
-      ease: "easeOut",
-      onUpdate: (v) => setVal(Math.round(v)),
-    });
-    return () => controls.stop();
-  }, [inView, to, duration, delay]);
-
+// Landing-page only. Counts 0 → `to` when it scrolls into view
+// (IntersectionObserver, see useCountUp). Reduced-motion jumps to the value.
+export default function CountUp({ to, duration = 1200, suffix = "" }) {
+  const [ref, value] = useCountUp(to, { duration });
   return (
     <span ref={ref} className="stat-number">
-      {val}
+      {value}
       {suffix}
     </span>
   );
