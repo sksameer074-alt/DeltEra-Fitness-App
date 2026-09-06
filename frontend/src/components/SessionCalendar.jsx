@@ -1,16 +1,11 @@
-import { DAYS, isoWeekday } from "../api";
-
-const STATUS_CLASS = {
-  done: "slot done",
-  missed: "slot missed",
-  upcoming: "slot upcoming",
-};
+import { DAYS, isoWeekday, STATUS_LABEL } from "../api";
+import { fmtTime } from "../tz.js";
 
 /**
- * Weekly calendar grid (Mon–Sun). `sessions` is [{date, status, workout_details}].
- * Each session sits under its weekday, coloured by status.
+ * Weekly calendar grid (Mon–Sun), grouped by the session's IST date.
+ * Times are shown in `zone` (trainer views pass IST, client views their own).
  */
-export default function SessionCalendar({ sessions }) {
+export default function SessionCalendar({ sessions, zone }) {
   const byDay = DAYS.map((_, i) => sessions.filter((s) => isoWeekday(s.date) === i));
 
   return (
@@ -28,13 +23,13 @@ export default function SessionCalendar({ sessions }) {
             {byDay.map((items, i) => (
               <td key={i}>
                 {items.length === 0 ? (
-                  <span style={{ color: "var(--text-2)" }}>—</span>
+                  <span className="muted">—</span>
                 ) : (
                   items.map((s) => (
-                    <div key={s.id} className={STATUS_CLASS[s.status] || "slot"}>
-                      {s.status}
-                      <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>
-                        {s.date.slice(5)}
+                    <div key={s.id} className={"slot " + s.status}>
+                      {STATUS_LABEL[s.status] || s.status}
+                      <div style={{ fontSize: "0.68rem", opacity: 0.85 }}>
+                        {s.starts_at ? fmtTime(s.starts_at, zone) : s.date.slice(5)}
                       </div>
                     </div>
                   ))
@@ -44,8 +39,9 @@ export default function SessionCalendar({ sessions }) {
           </tr>
         </tbody>
       </table>
-      <p style={{ fontSize: "0.8rem", color: "var(--text-2)" }}>
-        <span className="swatch done" /> done&nbsp;&nbsp;
+      <p className="muted" style={{ fontSize: "0.8rem" }}>
+        <span className="swatch completed" /> completed&nbsp;&nbsp;
+        <span className="swatch needs_review" /> needs review&nbsp;&nbsp;
         <span className="swatch missed" /> missed&nbsp;&nbsp;
         <span className="swatch upcoming" /> upcoming
       </p>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import TiltCard from "../components/TiltCard.jsx";
 
 function PurgeControl() {
   const [hours, setHours] = useState(24);
@@ -45,18 +46,27 @@ export default function Analytics() {
 
   const totalRevenue = data.monthly_revenue.reduce((s, m) => s + m.total, 0);
 
+  const STATS = [
+    { n: data.active_clients, label: "active clients" },
+    { n: data.clients_last_session_or_zero, label: "on last / 0 sessions" },
+    { n: totalRevenue, label: "total revenue" },
+  ];
+
   return (
     <>
+    <div className="stat-grid">
+      {STATS.map((s) => (
+        <TiltCard key={s.label} className="card stat-card" max={6}>
+          <span className="stat-number">{s.n}</span>
+          <span className="stat-card-label">{s.label}</span>
+        </TiltCard>
+      ))}
+    </div>
+
     <div className="card">
       <h1>Analytics</h1>
 
-      <div style={{ margin: "12px 0" }}>
-        <span className="counter"><strong>{data.active_clients}</strong> active clients</span>
-        <span className="counter"><strong>{data.clients_last_session_or_zero}</strong> on last / 0 sessions</span>
-        <span className="counter"><strong>{totalRevenue}</strong> total revenue</span>
-      </div>
-
-      <h2>Attendance (done vs missed)</h2>
+      <h2 style={{ marginTop: 0 }}>Attendance (done vs missed)</h2>
       {data.attendance.length === 0 ? (
         <p style={{ color: "var(--text-2)" }}>No clients.</p>
       ) : (

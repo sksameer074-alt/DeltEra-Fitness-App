@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, passwordError, phoneError, setSession } from "../api";
+import { browserZone } from "../tz.js";
 
 const SEX_OPTIONS = ["male", "female", "other"];
 const ACTIVITY_OPTIONS = ["lightly active", "moderately active", "very active"];
@@ -30,6 +31,18 @@ export default function Signup() {
   const phoneErr = form.phone_number ? phoneError(form.phone_number) : "";
   const pwErr = form.password ? passwordError(form.password) : "";
 
+  // Everything is required EXCEPT the injury / health-condition info.
+  const missing =
+    !form.name.trim() ||
+    !form.phone_number ||
+    !form.password ||
+    !form.weight ||
+    !form.height ||
+    !form.age ||
+    !form.sex ||
+    !form.activity_level;
+  const canSubmit = !missing && !phoneErr && !pwErr;
+
   function update(e) {
     const { name, value, type, checked } = e.target;
     setForm({ ...form, [name]: type === "checkbox" ? checked : value });
@@ -42,22 +55,27 @@ export default function Signup() {
       setError(phoneError(form.phone_number) || passwordError(form.password));
       return;
     }
+    if (missing) {
+      setError("Please fill in every field (injury / health info is optional).");
+      return;
+    }
 
     const payload = {
       name: form.name,
       phone_number: form.phone_number,
       password: form.password,
-      weight: form.weight ? Number(form.weight) : null,
-      height: form.height ? Number(form.height) : null,
-      age: form.age ? Number(form.age) : null,
-      sex: form.sex || null,
-      activity_level: form.activity_level || null,
+      weight: Number(form.weight),
+      height: Number(form.height),
+      age: Number(form.age),
+      sex: form.sex,
+      activity_level: form.activity_level,
       has_injury: form.has_injury,
       injury_comment: form.has_injury ? form.injury_comment : null,
       has_health_condition: form.has_health_condition,
       health_condition_comment: form.has_health_condition
         ? form.health_condition_comment
         : null,
+      timezone: browserZone(),
     };
 
     try {
@@ -101,20 +119,20 @@ export default function Signup() {
         <div className="row">
           <div style={{ flex: 1 }}>
             <label>Weight (kg)</label>
-            <input name="weight" type="number" step="0.1" value={form.weight} onChange={update} />
+            <input name="weight" type="number" step="0.1" min="1" value={form.weight} onChange={update} required />
           </div>
           <div style={{ flex: 1 }}>
             <label>Height (cm)</label>
-            <input name="height" type="number" step="0.1" value={form.height} onChange={update} />
+            <input name="height" type="number" step="0.1" min="1" value={form.height} onChange={update} required />
           </div>
           <div style={{ flex: 1 }}>
             <label>Age</label>
-            <input name="age" type="number" value={form.age} onChange={update} />
+            <input name="age" type="number" min="1" max="119" value={form.age} onChange={update} required />
           </div>
         </div>
 
         <label>Sex</label>
-        <select name="sex" value={form.sex} onChange={update}>
+        <select name="sex" value={form.sex} onChange={update} required>
           <option value="">Select…</option>
           {SEX_OPTIONS.map((o) => (
             <option key={o} value={o}>
@@ -124,7 +142,7 @@ export default function Signup() {
         </select>
 
         <label>Activity level</label>
-        <select name="activity_level" value={form.activity_level} onChange={update}>
+        <select name="activity_level" value={form.activity_level} onChange={update} required>
           <option value="">Select…</option>
           {ACTIVITY_OPTIONS.map((o) => (
             <option key={o} value={o}>
@@ -133,7 +151,11 @@ export default function Signup() {
           ))}
         </select>
 
-        <label style={{ marginTop: 16 }}>
+        <p className="muted" style={{ fontSize: "0.82rem", marginTop: 14 }}>
+          Injury and health-condition details below are optional.
+        </p>
+
+        <label style={{ marginTop: 4 }}>
           <input
             type="checkbox"
             name="has_injury"
@@ -171,7 +193,7 @@ export default function Signup() {
           />
         )}
 
-        <button type="submit" disabled={!!phoneErr || !!pwErr}>Create account</button>
+        <button type="submit" disabled={!canSubmit}>Create account</button>
       </form>
       {error && <div className="error">{error}</div>}
       <p>

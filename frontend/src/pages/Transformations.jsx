@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import SaveBar from "../components/SaveBar.jsx";
 import { fileToDownscaledDataUrl } from "../components/imageFile.js";
@@ -147,6 +147,268 @@ function LandingStats() {
         ))}
       </div>
       <SaveBar dirty={dirty} onSave={save} label="Save stats" error={error} />
+    </div>
+  );
+}
+
+/* ============================================================
+   Trainer-edited landing-page content (users.landing_content JSON blob).
+   One shared copy in context; each subsection has its own SaveBar and does a
+   read-modify-write of the whole blob via PATCH /users/me. No autosave.
+   ============================================================ */
+const LC = createContext(null);
+
+function LandingContentProvider({ children }) {
+  const [content, setContent] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .me()
+      .then((u) => setContent(u.landing_content || {}))
+      .catch((e) => setError(e.message));
+  }, []);
+
+  async function saveSection(patch) {
+    const next = { ...(content || {}), ...patch };
+    const u = await api.updateMe({ landing_content: next });
+    setContent(u.landing_content || {});
+  }
+
+  if (error) return <div className="card error">{error}</div>;
+  if (content === null) return null;
+  return <LC.Provider value={{ content, saveSection }}>{children}</LC.Provider>;
+}
+
+function useSection(build) {
+  const { content, saveSection } = useContext(LC);
+  const [state, setState] = useState(() => build(content));
+  const saved = useRef(JSON.stringify(build(content)));
+  const [error, setError] = useState("");
+  const dirty = JSON.stringify(state) !== saved.current;
+
+  async function onSave(toPayload) {
+    setError("");
+    try {
+      await saveSection(toPayload(state));
+      saved.current = JSON.stringify(state);
+    } catch (e) {
+      setError(e.message);
+      throw e;
+    }
+  }
+  return { state, setState, dirty, error, onSave };
+}
+
+function HeroEditor() {
+  const { state, setState, dirty, error, onSave } = useSection((c) => ({
+    hero_headline: c.hero_headline || "",
+    hero_subheadline: c.hero_subheadline || "",
+  }));
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Landing hero</h2>
+      <label>Headline</label>
+      <input
+        value={state.hero_headline}
+        maxLength={140}
+        placeholder="Defaults to your name"
+        onChange={(e) => setState({ ...state, hero_headline: e.target.value })}
+      />
+      <label>Sub-headline</label>
+      <textarea
+        rows={2}
+        value={state.hero_subheadline}
+        maxLength={280}
+        placeholder="Defaults to your bio"
+        onChange={(e) => setState({ ...state, hero_subheadline: e.target.value })}
+      />
+      <SaveBar dirty={dirty} onSave={() => onSave((s) => s)} label="Save hero" error={error} />
+    </div>
+  );
+}
+
+function WhyChooseUsEditor() {
+  const { state, setState, dirty, error, onSave } = useSection((c) => {
+    const arr = (c.why_choose_us || []).slice(0, 3).map((x) => ({
+      title: x.title || "",
+      description: x.description || "",
+    }));
+    while (arr.length < 3) arr.push({ title: "", description: "" });
+    return arr;
+  });
+  const set = (i, k, v) => setState(state.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Why choose us</h2>
+      <p className="muted" style={{ fontSize: "0.85rem" }}>
+        Three points. Leave one blank to hide it on the landing page.
+      </p>
+      <div className="lc-list">
+        {state.map((r, i) => (
+          <div key={i} className="lc-item">
+            <label>Point {i + 1} — title</label>
+            <input value={r.title} maxLength={80} onChange={(e) => set(i, "title", e.target.value)} />
+            <label>One-line description</label>
+            <input
+              value={r.description}
+              maxLength={240}
+              onChange={(e) => set(i, "description", e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+      <SaveBar
+        dirty={dirty}
+        onSave={() =>
+          onSave((s) => ({
+            why_choose_us: s.filter((r) => r.title.trim() || r.description.trim()),
+          }))
+        }
+        label="Save why choose us"
+        error={error}
+      />
+    </div>
+  );
+}
+
+function TestimonialsEditor() {
+  const { state, setState, dirty, error, onSave } = useSection((c) =>
+    (c.testimonials || []).map((x) => ({
+      name: x.name || "",
+      quote: x.quote || "",
+      rating: x.rating || 5,
+    }))
+  );
+  const set = (i, k, v) => setState(state.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Testimonials</h2>
+      <div className="lc-list">
+        {state.map((r, i) => (
+          <div key={i} className="lc-item">
+            <div className="row">
+              <label style={{ margin: 0 }}>Testimonial {i + 1}</label>
+              <button
+                type="button"
+                className="mini"
+                onClick={() => setState(state.filter((_, j) => j !== i))}
+              >
+                Remove
+              </button>
+            </div>
+            <label>Client name</label>
+            <input value={r.name} maxLength={80} onChange={(e) => set(i, "name", e.target.value)} />
+            <label>Quote</label>
+            <textarea
+              rows={2}
+              value={r.quote}
+              maxLength={800}
+              onChange={(e) => set(i, "quote", e.target.value)}
+            />
+            <label>Rating</label>
+            <select value={r.rating} onChange={(e) => set(i, "rating", Number(e.target.value))}>
+              {[5, 4, 3, 2, 1].map((n) => (
+                <option key={n} value={n}>
+                  {n} star{n > 1 ? "s" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+        {state.length === 0 && <p className="muted">No testimonials yet.</p>}
+      </div>
+      <button type="button" onClick={() => setState([...state, { name: "", quote: "", rating: 5 }])}>
+        Add testimonial
+      </button>
+      <SaveBar
+        dirty={dirty}
+        onSave={() => onSave((s) => ({ testimonials: s.filter((r) => r.quote.trim()) }))}
+        label="Save testimonials"
+        error={error}
+      />
+    </div>
+  );
+}
+
+function FaqEditor() {
+  const { state, setState, dirty, error, onSave } = useSection((c) =>
+    (c.faq || []).map((x) => ({ question: x.question || "", answer: x.answer || "" }))
+  );
+  const set = (i, k, v) => setState(state.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>FAQ</h2>
+      <div className="lc-list">
+        {state.map((r, i) => (
+          <div key={i} className="lc-item">
+            <div className="row">
+              <label style={{ margin: 0 }}>Question {i + 1}</label>
+              <button
+                type="button"
+                className="mini"
+                onClick={() => setState(state.filter((_, j) => j !== i))}
+              >
+                Remove
+              </button>
+            </div>
+            <input
+              value={r.question}
+              maxLength={240}
+              placeholder="Question"
+              onChange={(e) => set(i, "question", e.target.value)}
+            />
+            <label>Answer</label>
+            <textarea
+              rows={2}
+              value={r.answer}
+              maxLength={1200}
+              onChange={(e) => set(i, "answer", e.target.value)}
+            />
+          </div>
+        ))}
+        {state.length === 0 && <p className="muted">No FAQ entries yet.</p>}
+      </div>
+      <button type="button" onClick={() => setState([...state, { question: "", answer: "" }])}>
+        Add question
+      </button>
+      <SaveBar
+        dirty={dirty}
+        onSave={() => onSave((s) => ({ faq: s.filter((r) => r.question.trim()) }))}
+        label="Save FAQ"
+        error={error}
+      />
+    </div>
+  );
+}
+
+function ContactEditor() {
+  const { state, setState, dirty, error, onSave } = useSection((c) => ({
+    contact_phone: c.contact_phone || "",
+    instagram: c.instagram || "",
+  }));
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Contact</h2>
+      <p className="muted" style={{ fontSize: "0.85rem" }}>
+        Shown in the landing page's "Get in touch" section. The phone number is a
+        click-to-call link on mobile. This is separate from your login phone number.
+      </p>
+      <label>Phone number</label>
+      <input
+        value={state.contact_phone}
+        maxLength={40}
+        placeholder="+91 98765 43210"
+        onChange={(e) => setState({ ...state, contact_phone: e.target.value })}
+      />
+      <label>Instagram (handle or full link)</label>
+      <input
+        value={state.instagram}
+        maxLength={120}
+        placeholder="@yourhandle"
+        onChange={(e) => setState({ ...state, instagram: e.target.value })}
+      />
+      <SaveBar dirty={dirty} onSave={() => onSave((s) => s)} label="Save contact" error={error} />
     </div>
   );
 }
@@ -301,6 +563,14 @@ export default function Transformations() {
     <>
       <LandingContent />
       <LandingStats />
+
+      <LandingContentProvider>
+        <HeroEditor />
+        <WhyChooseUsEditor />
+        <TestimonialsEditor />
+        <FaqEditor />
+        <ContactEditor />
+      </LandingContentProvider>
 
       <div className="card">
         <h1>Transformations</h1>

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 Role = Literal["trainer", "client"]
 Sex = Literal["male", "female", "other"]
 ActivityLevel = Literal["lightly active", "moderately active", "very active"]
-SessionStatus = Literal["upcoming", "done", "missed"]
+SessionStatus = Literal["upcoming", "needs_review", "completed", "missed"]
 
 MEAL_PLAN_WORD_LIMIT = 5000
 MAX_DIET_PHOTOS = 10
@@ -25,9 +25,23 @@ def _check_time(v: str) -> str:
     return v
 
 
+def _check_time_optional(v: Optional[str]) -> Optional[str]:
+    return _check_time(v) if v else v
+
+
 def _check_phone(v: str) -> str:
     if not _PHONE_RE.match(v):
         raise ValueError("phone_number must be exactly 10 digits (numbers only)")
+    return v
+
+
+def _check_timezone(v: Optional[str]) -> Optional[str]:
+    if v is None or v == "":
+        return None
+    from .timeutil import is_valid_timezone
+
+    if not is_valid_timezone(v):
+        raise ValueError(f"'{v}' is not a valid IANA timezone")
     return v
 
 
@@ -69,19 +83,72 @@ class LandingStatsFields(BaseModel):
     total_sessions_stat: Optional[int] = Field(default=None, ge=0)
 
 
+# ---- Trainer-edited landing-page content (one JSON blob on the user row) ----
+
+
+class WhyChooseItem(BaseModel):
+    title: str = Field(default="", max_length=80)
+    description: str = Field(default="", max_length=240)
+
+
+class Testimonial(BaseModel):
+    name: str = Field(default="", max_length=80)
+    quote: str = Field(default="", max_length=800)
+    rating: int = Field(default=5, ge=1, le=5)
+
+
+class FaqItem(BaseModel):
+    question: str = Field(default="", max_length=240)
+    answer: str = Field(default="", max_length=1200)
+
+
+class LandingContent(BaseModel):
+    """Shape of `users.landing_content`. Used both for PATCH /users/me input and
+    the GET /public/landing response — extra keys are ignored, missing keys
+    fall back to empty."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    hero_headline: str = Field(default="", max_length=140)
+    hero_subheadline: str = Field(default="", max_length=280)
+    why_choose_us: List[WhyChooseItem] = Field(default_factory=list, max_length=6)
+    testimonials: List[Testimonial] = Field(default_factory=list, max_length=24)
+    faq: List[FaqItem] = Field(default_factory=list, max_length=24)
+    contact_phone: str = Field(default="", max_length=40)
+    instagram: str = Field(default="", max_length=120)
+
+
 class UserBase(ProfileFields):
     name: str
 
 
-class SignupRequest(UserBase):
+class SignupRequest(BaseModel):
     # Public signup ALWAYS creates a client. There is deliberately no `role`
     # field here, and the endpoint hardcodes role="client" regardless of the
     # request body. The single trainer account is created out of band
     # (backend/create_trainer.py).
+    #
+    # Every field is REQUIRED except the injury / health-condition info, which
+    # stays optional (both here and on the form).
+    name: str = Field(min_length=1)
     phone_number: str
     password: str = Field(min_length=PASSWORD_MIN_LEN)
+    weight: float = Field(gt=0)
+    height: float = Field(gt=0)
+    age: int = Field(gt=0, lt=120)
+    sex: Sex
+    activity_level: ActivityLevel
+
+    has_injury: bool = False
+    injury_comment: Optional[str] = None
+    has_health_condition: bool = False
+    health_condition_comment: Optional[str] = None
+
+    # client's detected browser timezone (IANA); optional
+    timezone: Optional[str] = None
 
     _v_phone = field_validator("phone_number")(_check_phone)
+    _v_tz = field_validator("timezone")(_check_timezone)
 
 
 class LoginRequest(BaseModel):
@@ -137,6 +204,11 @@ class UserOut(UserBase, MetricFields, LandingStatsFields):
     phone_number: str
     role: Role
     package: Optional[PackageBrief] = None
+    timezone: Optional[str] = None
+    # trainer landing-page content (also public via /public/landing)
+    bio: Optional[str] = None
+    credentials: Optional[str] = None
+    landing_content: LandingContent = Field(default_factory=LandingContent)
 
 
 class TokenResponse(BaseModel):
@@ -149,8 +221,8 @@ class TokenResponse(BaseModel):
 
 
 class ScheduleEntry(BaseModel):
-    day_of_week: int = Field(ge=0, le=6, description="0=Monday .. 6=Sunday")
-    time: str = Field(description='"HH:MM" 24h, IST')
+    day_of_week: int = Field(ge=0, le=6, description="0=Monday .. 6=Sunday, IST")
+    time: str = Field(description='"HH:MM" 24h, IST (the trainer\'s authoring tz)')
 
     _v_time = field_validator("time")(_check_time)
 
@@ -166,22 +238,34 @@ class ScheduleOut(ScheduleEntry):
     client_id: uuid.UUID
 
 
-# ---- Sessions (unchanged) ----
+# ---- Sessions ----
 
 
 class SessionCreate(BaseModel):
+    """A one-off session added by the trainer outside the weekly template.
+    `date` is the IST calendar date; `time` (IST "HH:MM") is optional — when
+    given, the session gets a concrete UTC `starts_at`."""
+
     date: dt_date
+    time: Optional[str] = None
     status: SessionStatus = "upcoming"
     workout_details: Optional[str] = None
+    notes: Optional[str] = None
+
+    _v_time = field_validator("time")(_check_time_optional)
 
 
 class SessionUpdate(BaseModel):
     date: Optional[dt_date] = None
+    time: Optional[str] = None
     status: Optional[SessionStatus] = None
     workout_details: Optional[str] = None
+    notes: Optional[str] = None
     client_rating: Optional[int] = Field(default=None, ge=1, le=5)
     client_comment: Optional[str] = None
     trainer_rating: Optional[int] = Field(default=None, ge=1, le=5)
+
+    _v_time = field_validator("time")(_check_time_optional)
 
 
 class SessionOut(BaseModel):
@@ -190,8 +274,11 @@ class SessionOut(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
     date: dt_date
+    starts_at: Optional[datetime] = None
     status: SessionStatus
+    auto_generated: bool = False
     workout_details: Optional[str] = None
+    notes: Optional[str] = None
     client_rating: Optional[int] = None
     client_comment: Optional[str] = None
     trainer_rating: Optional[int] = None
@@ -200,7 +287,8 @@ class SessionOut(BaseModel):
 class WeekSummary(BaseModel):
     week_start: dt_date
     week_end: dt_date
-    done: int
+    completed: int
+    needs_review: int
     missed: int
     upcoming: int
     remaining: int
@@ -376,6 +464,10 @@ class MeUpdate(LandingStatsFields):
     feeling_note: Optional[str] = None
     bio: Optional[str] = None
     credentials: Optional[str] = None
+    landing_content: Optional[LandingContent] = None
+    timezone: Optional[str] = None
+
+    _v_tz = field_validator("timezone")(_check_timezone)
 
 
 # ---- Announcements ----
@@ -432,6 +524,7 @@ class LandingOut(BaseModel):
     trainer: Optional[PublicTrainer] = None
     transformations: List[TransformationOut]
     stats: dict  # {clients, transformations, sessions} — the trainer's manual numbers
+    content: LandingContent = Field(default_factory=LandingContent)
 
 
 class PurgeResult(BaseModel):

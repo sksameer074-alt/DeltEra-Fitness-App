@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, packageBannerText, passwordError } from "../api";
 import ProfileView from "../components/ProfileView.jsx";
 import SessionCalendar from "../components/SessionCalendar.jsx";
+import { IST } from "../tz.js";
 
 function ResetPassword({ clientId }) {
   const [open, setOpen] = useState(false);
@@ -98,12 +99,15 @@ export default function ClientDetail() {
           <h2 style={{ marginTop: 24 }}>This week</h2>
           {summary ? (
             <>
-              <div style={{ margin: "8px 0" }}>
-                <span className="counter"><strong>{summary.done}</strong> done</span>
+              <div style={{ margin: "8px 0", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <span className="counter"><strong>{summary.completed}</strong> completed</span>
                 <span className="counter"><strong>{summary.remaining}</strong> remaining</span>
+                {summary.needs_review > 0 && (
+                  <span className="counter"><strong>{summary.needs_review}</strong> needs review</span>
+                )}
                 <span className="counter"><strong>{summary.missed}</strong> missed</span>
               </div>
-              <SessionCalendar sessions={summary.sessions} />
+              <SessionCalendar sessions={summary.sessions} zone={IST} />
             </>
           ) : (
             <p style={{ color: "var(--text-2)" }}>No session data.</p>

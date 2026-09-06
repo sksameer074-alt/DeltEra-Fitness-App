@@ -62,6 +62,15 @@ class User(Base):
     total_transformations_stat: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_sessions_stat: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Free-form landing-page content the trainer edits (hero copy, "why choose
+    # us", testimonials, FAQ, contact). One JSON blob, shaped by schemas.LandingContent.
+    landing_content: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # Client's IANA timezone (e.g. "America/New_York"). Auto-detected from the
+    # browser and stored here; the client can also override it. NULL falls back
+    # to browser detection at render time.
+    timezone: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -72,7 +81,14 @@ class User(Base):
 
 
 class Schedule(Base):
-    """One weekly training slot for a client. `time` is India Standard Time."""
+    """One weekly training slot for a client.
+
+    `day_of_week` + `time` are the trainer's authoring format, in **India
+    Standard Time** (IST is a fixed UTC+5:30 with no DST, so this template is
+    unambiguous). Concrete `sessions` generated from it store their instant in
+    UTC (`TrainingSession.starts_at`); client views convert that UTC instant to
+    the client's own timezone (DST-aware).
+    """
 
     __tablename__ = "schedules"
     __table_args__ = (
@@ -92,12 +108,21 @@ class Schedule(Base):
 
 
 class TrainingSession(Base):
-    """A dated training session with an outcome status. (Unchanged — manual creation.)"""
+    """One training session.
+
+    Created either automatically from the client's weekly `schedules` template
+    (a background job, `auto_generated=True`) or manually by the trainer.
+
+    Status lifecycle: `upcoming` -> (time passes, a job flips it) `needs_review`
+    -> the trainer picks `completed` or `missed`. The trainer may also set
+    `completed`/`missed` directly from `upcoming`.
+    """
 
     __tablename__ = "sessions"
     __table_args__ = (
         CheckConstraint(
-            "status in ('upcoming', 'done', 'missed')", name="sessions_status_check"
+            "status in ('upcoming', 'needs_review', 'completed', 'missed')",
+            name="sessions_status_check",
         ),
         CheckConstraint(
             "client_rating is null or (client_rating between 1 and 5)",
@@ -113,9 +138,19 @@ class TrainingSession(Base):
     client_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # IST calendar date of the session (used for weekly grouping / calendars).
     date: Mapped[dt_date] = mapped_column(Date, nullable=False, index=True)
+    # The scheduled instant, stored in UTC. NULL only for legacy date-only rows
+    # created before this field existed.
+    starts_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String, nullable=False, default="upcoming")
+    auto_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # What the session covers, shown to the client ahead of time.
     workout_details: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Trainer's private log of what the session covered / what happened.
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
     client_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     client_comment: Mapped[str | None] = mapped_column(String, nullable=True)
     trainer_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
